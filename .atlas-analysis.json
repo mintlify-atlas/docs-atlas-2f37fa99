@@ -1,0 +1,85 @@
+{
+  "projectType": "saas",
+  "projectName": "NixOS Configuration Editor",
+  "projectDescription": "A graphical application for editing and managing NixOS configurations built with GTK4 and libadwaita",
+  "theme": "aspen",
+  "primaryColor": "#5277C3",
+  "lightColor": "#7EBAE4",
+  "darkColor": "#41439A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "User Guide",
+            "pages": [
+              "guides/browsing-options",
+              "guides/editing-configuration",
+              "guides/rebuilding-system",
+              "guides/searching",
+              "guides/preferences"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/flakes",
+              "advanced/helper-binary",
+              "advanced/debugging"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/overview",
+              "development/ui-components",
+              "development/parsing",
+              "development/building"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/contributing",
+              "development/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Browse and search NixOS configuration options with a modern GTK4/libadwaita interface",
+    "Edit configuration values directly through an intuitive graphical interface",
+    "Rebuild NixOS system from within the application with real-time terminal output",
+    "Support for both traditional NixOS configurations and Flakes",
+    "Advanced option search with filtering and categorization",
+    "Syntax validation and error highlighting for Nix expressions",
+    "Multi-window support for editing multiple options simultaneously"
+  ],
+  "publicApiSurface": [
+    "nixos-conf-editor (main GUI application)",
+    "nce-helper config --output <path> (write configuration to file as root)",
+    "nce-helper rebuild <arguments> (run nixos-rebuild with arguments)",
+    "nce-helper write-rebuild --content <content> --path <path> <arguments> (write config and rebuild)",
+    "parseconfig(path: &str) -> Result<HashMap<String, String>, Box<dyn Error>>",
+    "editconfig(f: String, editedopts: HashMap<String, String>) -> Result<String, Box<dyn Error>>",
+    "readval(path: &str, query: &str, refq: &str) -> Result<String, Box<dyn Error>>",
+    "OptionData struct (represents NixOS option metadata)",
+    "AttrTree struct (hierarchical attribute tree for options)"
+  ]
+}

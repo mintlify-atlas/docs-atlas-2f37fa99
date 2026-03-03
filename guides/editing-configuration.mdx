@@ -1,0 +1,249 @@
+---
+title: "Editing configuration"
+description: "Modify NixOS configuration values with the built-in editor"
+---
+
+Once you've navigated to a configuration option, you can view its details and edit its value. The editor provides different interfaces based on the option's type.
+
+## Opening an option
+
+To edit an option:
+
+<Steps>
+  <Step title="Navigate to the option">
+    Use the attribute tree or search to find the option you want to configure.
+  </Step>
+  
+  <Step title="Click the option name">
+    This opens the option detail page showing all available information.
+  </Step>
+  
+  <Step title="Edit the value">
+    Use the appropriate editor for the option type (see below).
+  </Step>
+  
+  <Step title="Save your changes">
+    Click **Save** to apply the changes to your configuration.
+  </Step>
+</Steps>
+
+## Option information
+
+When you open an option, you'll see comprehensive details from the NixOS options database:
+
+### Description
+
+The description explains what the option does. Markdown formatting is converted to readable text using pandoc (`src/ui/optionpage.rs:91-114`):
+
+```rust
+let mut pandoc = pandoc::new();
+pandoc.set_input(pandoc::InputKind::Pipe(description));
+pandoc.set_input_format(pandoc::InputFormat::Markdown, vec![...]);
+pandoc.set_output_format(pandoc::OutputFormat::Html, vec![]);
+```
+
+### Type
+
+The type field shows what kind of value the option accepts, such as:
+- `boolean` - true/false values
+- `string` - text values
+- `signed integer` - numeric values
+- `list of strings` - arrays of text
+- `attribute set` - structured configuration objects
+
+### Default value
+
+If the option has a default value, it's displayed in a read-only code block. This helps you understand what will be used if you don't set a custom value.
+
+### Example
+
+Many options include example configurations showing common usage patterns. These are displayed in syntax-highlighted code blocks.
+
+## Editing different value types
+
+The editor adapts to the option type, providing the most appropriate interface:
+
+### Boolean values
+
+For `boolean` options, you get a toggle button interface:
+
+<CodeGroup>
+```nix configuration.nix
+services.nginx.enable = true;
+```
+</CodeGroup>
+
+The implementation in `src/ui/optionpage.rs:290-318` provides **True** and **False** buttons:
+
+```rust
+gtk::ToggleButton {
+    set_label: "True",
+    connect_toggled[sender] => move |x| {
+        if x.is_active() {
+            sender.input(OptPageMsg::UpdateConfMod(String::from("true")))
+        }
+    }
+}
+```
+
+<Tip>
+Toggle buttons are easier to use than typing "true" or "false" manually and prevent typos.
+</Tip>
+
+### String values
+
+For `string` options, you get a text entry field:
+
+<CodeGroup>
+```nix configuration.nix
+networking.hostName = "my-nixos-machine";
+```
+</CodeGroup>
+
+The string editor automatically adds and removes quotes (`src/ui/optionpage.rs:281-289`):
+
+```rust
+gtk::Entry {
+    connect_changed[sender] => move |x| {
+        if x.is_sensitive() {
+            sender.input(OptPageMsg::UpdateConfMod(format!("\"{}\"", x.text())));
+        }
+    },
+}
+```
+
+### Integer values
+
+For `signed integer` options, you get a numeric spinner:
+
+<CodeGroup>
+```nix configuration.nix
+services.openssh.ports = [ 22 ];
+```
+</CodeGroup>
+
+### Complex values
+
+For complex types like lists, attribute sets, or any value that doesn't fit the simple editors, you get a full code editor with:
+
+- **Syntax highlighting** for Nix expressions
+- **Multi-line editing** for complex structures
+- **Grid background** to help align code
+- **Automatic formatting** preservation
+
+<CodeGroup>
+```nix configuration.nix
+users.users.alice = {
+  isNormalUser = true;
+  extraGroups = [ "wheel" "networkmanager" ];
+  openssh.authorizedKeys.keys = [
+    "ssh-rsa AAAA..."
+  ];
+};
+```
+</CodeGroup>
+
+## Saving changes
+
+The save button becomes active when you've made changes:
+
+<Steps>
+  <Step title="Make your edits">
+    Modify the value using the appropriate editor.
+  </Step>
+  
+  <Step title="Review your changes">
+    The editor shows both the original and modified values.
+  </Step>
+  
+  <Step title="Click Save">
+    This validates your changes and updates the in-memory configuration.
+  </Step>
+</Steps>
+
+<Warning>
+Changes are saved to the application's state but **not** written to disk until you rebuild your system.
+</Warning>
+
+## Validation and error handling
+
+Before saving, the editor validates your input (`src/ui/optionpage.rs:565-610`):
+
+```rust
+OptPageMsg::SaveConf => {
+    // Trim whitespace
+    while conf.ends_with('\n') || conf.ends_with(' ') {
+        conf.pop();
+    }
+    
+    // Validate the value matches the type
+    self.async_handler.emit(SaveAsyncHandlerMsg::SaveCheck(
+        opt,
+        refopt,
+        conf,
+        self.alloptions.to_vec(),
+    ));
+}
+```
+
+### Common validation errors
+
+<AccordionGroup>
+  <Accordion title="Type mismatch">
+    The value you entered doesn't match the expected type. For example, entering text for a boolean option.
+    
+    **Solution**: Check the type field and use the appropriate format.
+  </Accordion>
+  
+  <Accordion title="Syntax error">
+    Your Nix expression has invalid syntax.
+    
+    **Solution**: Review your code for missing brackets, quotes, or semicolons.
+  </Accordion>
+  
+  <Accordion title="Invalid value">
+    The value is the correct type but not valid for this option.
+    
+    **Solution**: Check the description and example for valid value formats.
+  </Accordion>
+</AccordionGroup>
+
+## Reverting changes
+
+You have several options to undo changes:
+
+<CardGroup cols={2}>
+  <Card title="Reset" icon="rotate-left">
+    Revert the current option to its last saved value (discards unsaved changes for this option).
+  </Card>
+  
+  <Card title="Clear" icon="xmark">
+    Remove the value entirely, reverting to the NixOS default.
+  </Card>
+</CardGroup>
+
+The buttons are implemented in `src/ui/optionpage.rs:377-392`:
+
+```rust
+gtk::Button {
+    set_label: "Reset",
+    set_sensitive: model.conf != model.modifiedconf,
+    connect_clicked[sender] => move |_| {
+        sender.input(OptPageMsg::ResetConf)
+    }
+}
+```
+
+<Note>
+**Reset** only affects the current editing session. To restore the original file contents, you'll need to reload the configuration from disk.
+</Note>
+
+## Best practices
+
+<Tip>
+- **Read the description** before editing to understand what the option does
+- **Check the example** to see common usage patterns
+- **Use the type-specific editors** when available for better validation
+- **Test complex expressions** in a Nix REPL before adding them
+- **Keep track of dependencies** between related options
+</Tip>

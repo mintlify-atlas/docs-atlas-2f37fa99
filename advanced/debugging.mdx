@@ -1,0 +1,331 @@
+---
+title: Debugging and troubleshooting
+description: Learn how to debug issues, enable logging, and report problems with NixOS Configuration Editor
+---
+
+When encountering issues with NixOS Configuration Editor, comprehensive logging and debugging tools are available to help diagnose problems.
+
+## Enabling debug logging
+
+NixOS Configuration Editor uses Rust's standard logging infrastructure through the `env_logger` crate. You can control logging output using the `RUST_LOG` environment variable.
+
+### Basic usage
+
+Run the application with trace-level logging:
+
+```bash
+RUST_LOG=nixos_conf_editor=trace nixos-conf-editor
+```
+
+This will output detailed logging information to stderr, showing:
+- UI events and state changes
+- Configuration file operations
+- NixOS option parsing and validation
+- External command execution
+- Error conditions and stack traces
+
+<Note>
+  The logging target is `nixos_conf_editor` (with underscores), which matches the Rust crate name. Using hyphens (`nixos-conf-editor`) will not produce output.
+</Note>
+
+## Log levels
+
+Rust's `RUST_LOG` supports multiple log levels, from most to least verbose:
+
+<Steps>
+  <Step title="trace">
+    **Most verbose** - Shows every operation including internal state changes.
+    
+    ```bash
+    RUST_LOG=nixos_conf_editor=trace nixos-conf-editor
+    ```
+    
+    Use this for deep debugging of application behavior.
+  </Step>
+  
+  <Step title="debug">
+    **Detailed information** - Shows major operations and decisions.
+    
+    ```bash
+    RUST_LOG=nixos_conf_editor=debug nixos-conf-editor
+    ```
+    
+    Good balance for troubleshooting without overwhelming output.
+  </Step>
+  
+  <Step title="info">
+    **General information** - Highlights important events.
+    
+    ```bash
+    RUST_LOG=nixos_conf_editor=info nixos-conf-editor
+    ```
+    
+    Useful for monitoring normal operation.
+  </Step>
+  
+  <Step title="warn">
+    **Warnings only** - Shows potential issues that aren't errors.
+    
+    ```bash
+    RUST_LOG=nixos_conf_editor=warn nixos-conf-editor
+    ```
+  </Step>
+  
+  <Step title="error">
+    **Errors only** - Only shows error conditions.
+    
+    ```bash
+    RUST_LOG=nixos_conf_editor=error nixos-conf-editor
+    ```
+  </Step>
+</Steps>
+
+## Advanced logging configuration
+
+### Multiple modules
+
+Enable logging for multiple modules:
+
+```bash
+RUST_LOG=nixos_conf_editor=debug,relm4=info nixos-conf-editor
+```
+
+This logs:
+- `nixos_conf_editor` at debug level
+- `relm4` (the UI framework) at info level
+
+### Global log level
+
+Set a global log level with per-module overrides:
+
+```bash
+RUST_LOG=warn,nixos_conf_editor=trace nixos-conf-editor
+```
+
+This sets:
+- All modules to warn level
+- `nixos_conf_editor` specifically to trace level
+
+### Redirect output
+
+Save logs to a file for later analysis:
+
+<CodeGroup>
+```bash Redirect stderr
+RUST_LOG=nixos_conf_editor=trace nixos-conf-editor 2> debug.log
+```
+
+```bash Both stdout and stderr
+RUST_LOG=nixos_conf_editor=trace nixos-conf-editor &> debug.log
+```
+
+```bash Tee to file and terminal
+RUST_LOG=nixos_conf_editor=trace nixos-conf-editor 2>&1 | tee debug.log
+```
+</CodeGroup>
+
+## Common debugging scenarios
+
+### Configuration not saving
+
+<Steps>
+  <Step title="Enable trace logging">
+    ```bash
+    RUST_LOG=nixos_conf_editor=trace nixos-conf-editor 2> save-debug.log
+    ```
+  </Step>
+  
+  <Step title="Attempt to save">
+    Make your changes and click save in the application.
+  </Step>
+  
+  <Step title="Review logs">
+    Check `save-debug.log` for:
+    - File path being written
+    - Permission errors
+    - Helper binary invocation
+    - Polkit authentication failures
+  </Step>
+</Steps>
+
+### Rebuild failures
+
+<Steps>
+  <Step title="Run with debug logging">
+    ```bash
+    RUST_LOG=nixos_conf_editor=debug nixos-conf-editor
+    ```
+  </Step>
+  
+  <Step title="Check rebuild output">
+    The application shows rebuild output in a terminal widget. Look for:
+    - Nix evaluation errors
+    - Build failures
+    - Syntax errors in configuration
+  </Step>
+  
+  <Step title="Test configuration manually">
+    Verify the configuration outside the editor:
+    
+    ```bash
+    sudo nixos-rebuild build --dry-run
+    ```
+  </Step>
+</Steps>
+
+### UI not responding
+
+<Steps>
+  <Step title="Launch with trace logging">
+    ```bash
+    RUST_LOG=nixos_conf_editor=trace,relm4=debug nixos-conf-editor
+    ```
+  </Step>
+  
+  <Step title="Reproduce the issue">
+    Perform the actions that cause the UI to freeze.
+  </Step>
+  
+  <Step title="Check for errors">
+    Look in the log output for:
+    - Panic messages
+    - Error traces
+    - Long-running operations
+    - Blocking I/O operations
+  </Step>
+</Steps>
+
+## Development debugging
+
+When building from source, additional debugging tools are available:
+
+### Debug build
+
+Build without optimizations for better debugging:
+
+```bash
+meson build --buildtype=debug
+ninja -C build
+
+# Run the debug build
+RUST_LOG=trace ./build/src/nixos-conf-editor
+```
+
+### Rust backtrace
+
+Enable full backtraces on panic:
+
+```bash
+RUST_BACKTRACE=1 nixos-conf-editor
+```
+
+Or full backtraces with all frames:
+
+```bash
+RUST_BACKTRACE=full nixos-conf-editor
+```
+
+### Combined debugging
+
+Use all debugging features together:
+
+```bash
+RUST_LOG=nixos_conf_editor=trace RUST_BACKTRACE=full nixos-conf-editor 2>&1 | tee full-debug.log
+```
+
+## Reporting issues
+
+When reporting bugs, include the following information:
+
+<Steps>
+  <Step title="System information">
+    ```bash
+    nixos-version
+    uname -a
+    ```
+  </Step>
+  
+  <Step title="Application version">
+    ```bash
+    nixos-conf-editor --version
+    ```
+  </Step>
+  
+  <Step title="Debug logs">
+    Run with trace logging and capture output:
+    
+    ```bash
+    RUST_LOG=nixos_conf_editor=trace nixos-conf-editor 2> issue-debug.log
+    ```
+    
+    Attach `issue-debug.log` to your bug report.
+  </Step>
+  
+  <Step title="Steps to reproduce">
+    Provide clear steps that reproduce the issue reliably.
+  </Step>
+  
+  <Step title="Expected vs actual behavior">
+    Describe what you expected to happen and what actually occurred.
+  </Step>
+</Steps>
+
+<Warning>
+  Debug logs may contain sensitive information like file paths and configuration snippets. Review logs before sharing publicly and redact any sensitive data.
+</Warning>
+
+## Performance profiling
+
+For performance issues, you can profile the application:
+
+### CPU profiling
+
+```bash
+# Install perf
+nix-shell -p linuxPackages.perf
+
+# Profile the application
+perf record -g nixos-conf-editor
+# Use the application
+# Exit when done
+perf report
+```
+
+### Memory profiling
+
+```bash
+# Install valgrind
+nix-shell -p valgrind
+
+# Check for memory leaks
+valgrind --leak-check=full nixos-conf-editor
+```
+
+## GTK debugging
+
+For UI-specific issues with GTK4 or libadwaita:
+
+```bash
+# Enable GTK debug messages
+GTK_DEBUG=interactive nixos-conf-editor
+```
+
+This opens the GTK Inspector, allowing you to:
+- Inspect the widget hierarchy
+- View CSS styling
+- Monitor resource usage
+- Test UI changes live
+
+## Getting help
+
+If you're stuck:
+
+- **Matrix**: Join [#snowflakeos:matrix.org](https://matrix.to/#/#snowflakeos:matrix.org)
+- **Discord**: Join the [SnowflakeOS Discord](https://discord.gg/6rWNMmdkgT)
+- **GitHub Issues**: Report bugs at [snowfallorg/nixos-conf-editor](https://github.com/snowfallorg/nixos-conf-editor/issues)
+
+When asking for help, always include:
+- Your NixOS version
+- How you installed NixOS Configuration Editor
+- Debug logs with `RUST_LOG=nixos_conf_editor=trace`
+- Steps to reproduce the issue

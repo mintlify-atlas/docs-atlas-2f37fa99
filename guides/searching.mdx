@@ -1,0 +1,293 @@
+---
+title: "Searching"
+description: "Quickly find NixOS configuration options with the built-in search"
+---
+
+With thousands of NixOS configuration options available, searching is often the fastest way to find what you need. The Configuration Editor includes a powerful search feature that searches both option names and descriptions.
+
+## Opening search
+
+You can open the search interface in two ways:
+
+<Steps>
+  <Step title="Use the keyboard shortcut">
+    Press **Ctrl+F** to open search from anywhere in the application.
+  </Step>
+  
+  <Step title="Click the search button">
+    Click the search icon in the toolbar.
+  </Step>
+</Steps>
+
+The search interface replaces the header with a search box and displays results in the main area.
+
+## How search works
+
+The search functionality is implemented in `src/ui/searchpage.rs` and provides intelligent ranking:
+
+### Query processing
+
+Your search query is split into individual words, and options are matched if they contain any of the words:
+
+```rust
+// From src/ui/searchpage.rs:93-110
+let q = query.split_whitespace();
+let mut sortedoptions = self.options.clone();
+if q.clone().any(|x| x.len() > 2) {
+    sortedoptions = sortedoptions
+        .iter()
+        .filter(|x| {
+            for part in q.clone() {
+                if x.0.to_lowercase().contains(&part.to_lowercase()) {
+                    return true;
+                }
+            }
+            false
+        })
+        .map(|x| x.to_owned())
+        .collect::<Vec<_>>();
+}
+```
+
+### Relevance ranking
+
+Results are ranked by relevance:
+
+1. **Match count**: Options with more query word matches rank higher
+2. **Option name length**: Shorter option names rank higher when match counts are equal
+3. **Description matching**: For longer queries (>2 chars), descriptions are also searched
+
+```rust
+// From src/ui/searchpage.rs:111-126
+sortedoptions.sort_by(|a, b| {
+    let mut acount = 0;
+    let mut bcount = 0;
+    for part in q.clone() {
+        acount += a.0.to_lowercase().matches(&part.to_lowercase()).count();
+        bcount += b.0.to_lowercase().matches(&part.to_lowercase()).count();
+    }
+    match acount.cmp(&bcount) {
+        Ordering::Less => Ordering::Less,
+        Ordering::Greater => Ordering::Greater,
+        Ordering::Equal => a.0.len().cmp(&b.0.len()),
+    }
+});
+```
+
+## Search features
+
+### Real-time results
+
+Search results update as you type, with no need to press Enter:
+
+<Tip>
+Start with broad terms and narrow down by adding more words. For example, search "network" then add "interface" to find network interface options.
+</Tip>
+
+### Case-insensitive matching
+
+All searches are case-insensitive, so "NGINX", "nginx", and "Nginx" all return the same results.
+
+### Multi-word queries
+
+You can search for multiple words. Options matching any word will appear in results:
+
+<CodeGroup>
+```text Example: Find SSH or network options
+ssh network
+```
+</CodeGroup>
+
+This will return options containing "ssh" OR "network" in their name or description.
+
+### Description search
+
+For queries with words longer than 2 characters, the search also looks in option descriptions:
+
+```rust
+// From src/ui/searchpage.rs:128-135
+if q.clone().all(|part| {
+    opt.0.to_lowercase().contains(&part.to_lowercase())
+        || if q.clone().any(|x| x.len() > 2) {
+            opt.2.to_lowercase().contains(&part.to_lowercase())
+        } else {
+            false
+        }
+}) {
+    // Include in results
+}
+```
+
+<Info>
+Description search helps you find options even when you don't know the exact name. For example, searching "firewall" finds firewall-related options by description.
+</Info>
+
+## Viewing search results
+
+Search results are displayed as a scrollable list:
+
+### Result display
+
+Each result shows:
+- The full option path (e.g., `services.nginx.enable`)
+- Visual indicators for configured and modified options
+- Click any result to open that option's detail page
+
+### Result indicators
+
+The same visual indicators from browsing are shown in search results:
+
+<CardGroup cols={2}>
+  <Card title="Configured" icon="check">
+    A checkmark icon indicates the option is set in your configuration file.
+  </Card>
+  
+  <Card title="Modified" icon="play">
+    A play icon indicates the option has unsaved changes in the current session.
+  </Card>
+</CardGroup>
+
+Implementation from `src/ui/searchpage.rs:136-149`:
+
+```rust
+let configured = opt.1;
+let modified = opconfigured(&editedopts, &[], opt.0.clone());
+if self.modifiedonly && !(configured || modified) {
+    continue;
+}
+oplst_guard.push_back(SearchOption {
+    value: opt.0.split('.').map(|s| s.to_string()).collect(),
+    configured,
+    modified,
+});
+```
+
+### Result limit
+
+To maintain performance, search results are limited to 1000 options:
+
+```rust
+// From src/ui/searchpage.rs:151-153
+if oplst_guard.len() >= 1000 {
+    break;
+}
+```
+
+<Warning>
+If you see exactly 1000 results, there may be more matches. Try refining your search with additional terms.
+</Warning>
+
+## Filter by modification status
+
+You can filter search results to show only modified or configured options:
+
+<Steps>
+  <Step title="Enable modified-only filter">
+    Use the filter toggle to show only options you've configured or modified.
+  </Step>
+  
+  <Step title="Search within filtered results">
+    Your search query applies to the filtered set.
+  </Step>
+  
+  <Step title="Clear the filter">
+    Toggle off to see all matching options again.
+  </Step>
+</Steps>
+
+This is useful when you want to review all your customizations:
+
+```rust
+// From src/ui/searchpage.rs:169-174
+SearchPageMsg::SetModifiedOnly(modified, search) => {
+    self.modifiedonly = modified;
+    if search {
+        let _ = sender.output(AppMsg::ShowSearchPage(self.query.clone()));
+    }
+}
+```
+
+## No results found
+
+If your search returns no results, you'll see a status page:
+
+```rust
+// From src/ui/searchpage.rs:51-60
+gtk::Box {
+    set_orientation: gtk::Orientation::Vertical,
+    set_valign: gtk::Align::Center,
+    adw::StatusPage {
+        set_icon_name: Some("edit-find-symbolic"),
+        set_title: "No options found!",
+        set_description: Some("Try a different search"),
+    },
+}
+```
+
+If you don't find what you're looking for:
+
+<Tip>
+- Try different search terms or synonyms
+- Search for broader categories (e.g., "services" instead of specific service names)
+- Check the NixOS manual for the exact option name
+- Browse the attribute tree to discover related options
+</Tip>
+
+## Working with dynamic options
+
+Some search results may contain special patterns:
+
+### Options with wildcards (`*`)
+
+Clicking an option containing `*` opens a dialog to select or create an array index:
+
+<CodeGroup>
+```text Example
+networking.interfaces.*.ipv4.addresses
+```
+</CodeGroup>
+
+### Options with name placeholders (`<name>`)
+
+Clicking an option with `<name>` opens a dialog to select an existing name or create a new one:
+
+<CodeGroup>
+```text Example
+services.nginx.virtualHosts.<name>.locations
+```
+</CodeGroup>
+
+This is handled in `src/ui/searchpage.rs:156-165`:
+
+```rust
+SearchPageMsg::OpenOption(opt, refpos) => {
+    if opt.contains(&String::from("*")) || opt.contains(&String::from("<name>")) {
+        let _ = sender.output(AppMsg::ShowSearchPageEntry(opt));
+    } else {
+        let _ = sender.output(AppMsg::OpenOption(
+            opt.clone(),
+            if let Some(x) = refpos { x } else { opt },
+        ));
+    }
+}
+```
+
+## Closing search
+
+To exit search and return to browsing:
+
+- Press **Escape**
+- Click outside the search box
+- Click the close button
+
+Your navigation position is preserved when you close search.
+
+## Search best practices
+
+<Tip>
+- **Start broad, then narrow**: Begin with general terms and add specifics
+- **Use technical terms**: Search for "daemon" instead of "service"
+- **Try package names**: Search for "nginx" to find all nginx-related options
+- **Search descriptions**: Use descriptive terms like "firewall" or "startup"
+- **Use the filter**: Enable modified-only to review your changes
+</Tip>

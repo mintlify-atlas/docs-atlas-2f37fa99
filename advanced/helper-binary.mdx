@@ -1,0 +1,237 @@
+---
+title: The nce-helper binary
+description: Understanding the privileged helper binary used for system configuration changes
+---
+
+The `nce-helper` binary is a privileged helper program that enables NixOS Configuration Editor to write system configuration files and execute `nixos-rebuild` commands. It requires root access to modify system files and is typically invoked through polkit authentication.
+
+## Why a helper binary?
+
+NixOS system configurations are typically stored in `/etc/nixos/` which requires root privileges to modify. Additionally, running `nixos-rebuild` requires administrative access. Rather than running the entire GUI application as root, NixOS Configuration Editor uses a small, focused helper binary that:
+
+- Minimizes the attack surface by limiting privileged code
+- Enables fine-grained polkit authorization policies
+- Separates UI concerns from system-level operations
+- Provides a clean interface for configuration management
+
+<Note>
+  When installed system-wide via NixOS configuration, polkit rules are automatically configured to allow the helper binary to run with appropriate permissions.
+</Note>
+
+## Subcommands
+
+The helper binary provides three subcommands for different operations:
+
+### config - Write configuration from stdin
+
+Writes configuration content from standard input to a specified file path.
+
+<CodeGroup>
+```bash Usage
+echo "{ ... }" | pkexec nce-helper config --output /etc/nixos/configuration.nix
+```
+
+```bash Short form
+cat config.nix | pkexec nce-helper config -o /etc/nixos/configuration.nix
+```
+</CodeGroup>
+
+<ParamField path="--output" type="string" required>
+  The file path where the configuration should be written. The helper will create or overwrite this file with the content received from stdin.
+</ParamField>
+
+**Example use case:**
+```bash
+# Write a new configuration file
+echo '{ config, pkgs, ... }: {
+  environment.systemPackages = with pkgs; [
+    firefox
+    git
+  ];
+}' | sudo nce-helper config --output /etc/nixos/test.nix
+```
+
+### rebuild - Execute nixos-rebuild
+
+Runs `nixos-rebuild` with the specified arguments, streaming output to the caller.
+
+<CodeGroup>
+```bash Usage
+pkexec nce-helper rebuild <arguments>...
+```
+
+```bash Examples
+pkexec nce-helper rebuild switch
+pkexec nce-helper rebuild test --flake .#my-host
+pkexec nce-helper rebuild boot --upgrade
+```
+</CodeGroup>
+
+<ParamField path="arguments" type="array">
+  Arguments passed directly to the `nixos-rebuild` command. These can include:
+  - `switch` - Build and activate the new configuration
+  - `test` - Build and activate without making it the boot default  
+  - `boot` - Build and make it the boot default without activating
+  - `build` - Build the configuration without activating
+  - `--flake` - Specify a flake URI
+  - `--upgrade` - Update flake inputs before rebuilding
+  - Any other valid `nixos-rebuild` options
+</ParamField>
+
+**Example use cases:**
+```bash
+# Standard rebuild and activation
+sudo nce-helper rebuild switch
+
+# Test configuration without making it boot default
+sudo nce-helper rebuild test
+
+# Rebuild with flake
+sudo nce-helper rebuild switch --flake /etc/nixos#hostname
+```
+
+### write-rebuild - Combined write and rebuild
+
+Combines writing a configuration file with rebuilding the system in a single atomic operation.
+
+```bash Usage
+pkexec nce-helper write-rebuild --content "<config>" --path /etc/nixos/file.nix <rebuild-args>...
+```
+
+<ParamField path="--content" type="string" required>
+  The configuration content to write to the file. This is passed as a string argument rather than through stdin.
+</ParamField>
+
+<ParamField path="--path" type="string" required>
+  The file path where the configuration should be written before rebuilding.
+</ParamField>
+
+<ParamField path="arguments" type="array">
+  Arguments to pass to `nixos-rebuild` after writing the configuration file.
+</ParamField>
+
+**Example use case:**
+```bash
+# Write configuration and rebuild in one operation
+sudo nce-helper write-rebuild \
+  --content '{ environment.systemPackages = [ pkgs.vim ]; }' \
+  --path /etc/nixos/packages.nix \
+  switch
+```
+
+<Steps>
+  <Step title="Write configuration">
+    The helper writes the content to the specified path.
+  </Step>
+  
+  <Step title="Execute rebuild">
+    If the write succeeds, immediately runs `nixos-rebuild` with the provided arguments.
+  </Step>
+  
+  <Step title="Handle errors">
+    If either operation fails, the command exits with an error code and message.
+  </Step>
+</Steps>
+
+## Root access requirement
+
+The helper binary enforces root access on startup:
+
+```rust nce-helper/src/main.rs:41-44
+if users::get_effective_uid() != 0 {
+    eprintln!("nixos-conf-editor-helper must be run as root");
+    std::process::exit(1);
+}
+```
+
+<Warning>
+  The helper binary will immediately exit with an error if not run as root. It must be invoked through `sudo`, `pkexec`, or another privilege escalation mechanism.
+</Warning>
+
+## How the application uses the helper
+
+NixOS Configuration Editor invokes the helper binary when:
+
+1. **Saving configuration changes** - Uses `write-rebuild` to save the modified configuration and optionally rebuild
+2. **Manual rebuilds** - Uses `rebuild` when the user triggers a rebuild without configuration changes
+3. **Configuration exports** - Uses `config` to write configuration files to custom locations
+
+The application typically uses `pkexec` (polkit) to request authentication:
+
+```bash
+pkexec nce-helper write-rebuild \
+  --content "$(cat /tmp/new-config.nix)" \
+  --path /etc/nixos/configuration.nix \
+  switch
+```
+
+## Security considerations
+
+<Note>
+  The helper binary is intentionally minimal (111 lines) to reduce security risk. It only performs three well-defined operations and validates that it's running as root.
+</Note>
+
+**Security features:**
+
+- **Minimal code surface** - Small codebase reduces potential vulnerabilities
+- **Root requirement** - Explicitly validates effective UID is 0
+- **No shell execution** - Uses Rust's `Command` API directly, not shell interpretation
+- **Clear error handling** - Fails explicitly rather than continuing with partial operations
+- **No complex logic** - Straightforward file I/O and command execution
+
+**Authentication flow:**
+
+<Steps>
+  <Step title="User initiates action">
+    User clicks "Save & Rebuild" or similar action in the GUI.
+  </Step>
+  
+  <Step title="Polkit authentication">
+    The application invokes `pkexec nce-helper ...` which triggers a polkit authentication dialog.
+  </Step>
+  
+  <Step title="User authenticates">
+    User enters their password to grant temporary root access.
+  </Step>
+  
+  <Step title="Helper executes">
+    The helper binary runs with root privileges and performs the requested operation.
+  </Step>
+  
+  <Step title="Return to user context">
+    Once the operation completes, the process returns to normal user privileges.
+  </Step>
+</Steps>
+
+## Error handling
+
+The helper provides clear error messages for common failure scenarios:
+
+```bash
+# Not run as root
+$ nce-helper rebuild switch
+nixos-conf-editor-helper must be run as root
+
+# File write failure
+$ sudo nce-helper config --output /invalid/path/config.nix < config.nix
+No such file or directory (os error 2)
+
+# Rebuild failure
+$ sudo nce-helper rebuild invalid-command
+nixos-rebuild failed with exit code 1
+```
+
+## Building the helper
+
+The helper binary is built as part of the main application build process using Meson and Cargo:
+
+```bash
+# In development environment
+meson build
+ninja -C build
+
+# The binary will be at:
+build/nce-helper/nce-helper
+```
+
+It's automatically included in the Nix package derivation and installed to the system path when the application is installed.

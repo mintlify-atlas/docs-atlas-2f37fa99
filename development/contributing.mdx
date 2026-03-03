@@ -1,0 +1,242 @@
+---
+title: Contributing
+description: How to contribute to NixOS Configuration Editor
+---
+
+NixOS Configuration Editor is an open-source project, and we welcome contributions from the community. Whether you're fixing bugs, adding features, improving documentation, or helping with translations, your contributions are valuable.
+
+## Getting started
+
+<Steps>
+  <Step title="Set up your development environment">
+    Follow the [building from source](/development/building) guide to set up your development environment with all required dependencies.
+  </Step>
+  
+  <Step title="Fork and clone the repository">
+    ```bash
+    git clone https://github.com/snowfallorg/nixos-conf-editor.git
+    cd nixos-conf-editor
+    ```
+  </Step>
+  
+  <Step title="Create a feature branch">
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+  </Step>
+  
+  <Step title="Make your changes">
+    Follow the code style guidelines and best practices outlined below.
+  </Step>
+  
+  <Step title="Test your changes">
+    Build and test your changes thoroughly before submitting.
+    
+    ```bash
+    meson setup build
+    meson compile -C build
+    ./build/src/nixos-conf-editor
+    ```
+  </Step>
+  
+  <Step title="Submit a pull request">
+    Push your changes and open a pull request on GitHub with a clear description of what you've changed and why.
+  </Step>
+</Steps>
+
+## Code style and standards
+
+### Rust code style
+
+The project follows standard Rust formatting conventions:
+
+```bash
+# Format code with rustfmt
+cargo fmt
+
+# Check for common mistakes
+cargo clippy
+```
+
+<Note>
+  Run `cargo fmt` before committing to ensure consistent code formatting across the project.
+</Note>
+
+### Code organization
+
+The codebase is organized into several modules:
+
+- **`src/ui/`** - User interface components built with Relm4
+- **`src/parse/`** - Configuration parsing and editing logic
+- **`nce-helper/`** - Privileged helper binary for system operations
+
+See the [architecture overview](/development/overview) for more details on the project structure.
+
+### Message-driven architecture
+
+The UI uses Relm4's message-driven architecture. When adding new features:
+
+1. Define new message types in the component's `Msg` enum
+2. Handle messages in the `update` function
+3. Update the view based on model changes
+4. Use async workers for long-running operations
+
+Example from `src/ui/window.rs`:
+
+```rust
+#[derive(Debug)]
+pub enum AppMsg {
+    SetAttr(String),
+    Back,
+    SaveAll,
+    // Add your new message types here
+}
+
+impl Component for AppModel {
+    type CommandOutput = ();
+    type Input = AppMsg;
+    type Output = ();
+
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
+        match msg {
+            AppMsg::SetAttr(attr) => {
+                // Handle attribute selection
+            }
+            AppMsg::Back => {
+                // Handle back navigation
+            }
+            // Handle your new messages
+        }
+    }
+}
+```
+
+## Testing
+
+### Manual testing
+
+Before submitting changes, test the application manually:
+
+1. **Basic functionality** - Browse options, search, edit values
+2. **Edge cases** - Empty values, special characters, large lists
+3. **Error handling** - Invalid syntax, permission errors, network issues
+4. **Performance** - Large configurations, rapid navigation
+
+### Debug logging
+
+Use the `RUST_LOG` environment variable for detailed logging:
+
+```bash
+RUST_LOG=nixos_conf_editor=debug ./build/src/nixos-conf-editor
+```
+
+See [debugging](/advanced/debugging) for more information.
+
+## Documentation
+
+When adding new features, update the documentation:
+
+- Add inline code comments for complex logic
+- Update user-facing documentation in this docs site
+- Include examples in commit messages
+
+## Commit messages
+
+Write clear, descriptive commit messages:
+
+```
+Add support for custom flake arguments
+
+- Allow users to specify additional arguments for flake-based rebuilds
+- Add UI controls in preferences dialog
+- Update nce-helper to pass arguments to nixos-rebuild
+```
+
+## Pull request guidelines
+
+When submitting a pull request:
+
+<CardGroup cols={2}>
+  <Card title="Clear description" icon="file-lines">
+    Explain what changes you made and why. Include screenshots for UI changes.
+  </Card>
+  
+  <Card title="Keep it focused" icon="bullseye">
+    Each PR should address a single concern. Split large changes into multiple PRs.
+  </Card>
+  
+  <Card title="Test thoroughly" icon="vial">
+    Ensure your changes work as expected and don't break existing functionality.
+  </Card>
+  
+  <Card title="Follow conventions" icon="ruler">
+    Match the existing code style and architecture patterns.
+  </Card>
+</CardGroup>
+
+## Areas for contribution
+
+### High-priority areas
+
+<AccordionGroup>
+  <Accordion title="Internationalization (i18n)">
+    Help translate the application to other languages. The project uses gettext for translations.
+    
+    Translation files are located in the `po/` directory.
+  </Accordion>
+  
+  <Accordion title="Testing infrastructure">
+    Add unit tests and integration tests to improve code coverage and prevent regressions.
+  </Accordion>
+  
+  <Accordion title="Performance optimization">
+    Optimize parsing and rendering for large configuration files with thousands of options.
+  </Accordion>
+  
+  <Accordion title="Documentation improvements">
+    Improve user documentation, add tutorials, and create video guides.
+  </Accordion>
+</AccordionGroup>
+
+### Feature ideas
+
+Consider contributing these features:
+
+- **Configuration templates** - Pre-built configuration snippets for common setups
+- **Diff viewer** - Visual diff of configuration changes before rebuild
+- **Backup management** - Automatic backups of configuration files
+- **Option favorites** - Bookmark frequently used options
+- **Configuration validation** - Check for common mistakes before rebuild
+- **Home Manager support** - Extend support to Home Manager configurations
+
+## License
+
+NixOS Configuration Editor is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+
+By contributing to this project, you agree that your contributions will be licensed under the same GPL-3.0 license. This ensures the software remains free and open source.
+
+The icons in `data/icons/` contain assets from the [NixOS logo](https://github.com/NixOS/nixos-artwork/tree/master/logo) and are licensed under a [CC-BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
+
+## Community
+
+Join our community channels to discuss development:
+
+<CardGroup cols={2}>
+  <Card title="Matrix" icon="comments" href="https://matrix.to/#/#snowflakeos:matrix.org">
+    Chat with the community on Matrix at #snowflakeos:matrix.org
+  </Card>
+  
+  <Card title="Discord" icon="discord" href="https://discord.gg/6rWNMmdkgT">
+    Join our Discord server for real-time discussions
+  </Card>
+</CardGroup>
+
+<Tip>
+  Not sure where to start? Check the [GitHub issues](https://github.com/snowfallorg/nixos-conf-editor/issues) for tasks labeled "good first issue" or "help wanted".
+</Tip>
+
+## Code of conduct
+
+Be respectful and constructive in all interactions. We're building this tool together as a community, and everyone's contributions are valued.
+
+Thank you for contributing to NixOS Configuration Editor!

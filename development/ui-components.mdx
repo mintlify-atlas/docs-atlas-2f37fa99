@@ -1,0 +1,501 @@
+---
+title: UI Component Structure
+description: Understanding the Relm4 component architecture and message passing system
+---
+
+## Relm4 Architecture
+
+NixOS Configuration Editor uses the Relm4 framework, which implements an Elm-inspired Model-View-Update (MVU) architecture. This pattern provides a predictable, type-safe way to build complex user interfaces.
+
+<Info>
+Relm4 is specifically designed for GTK4 applications, providing Rust-friendly abstractions over GTK's object-oriented C API.
+</Info>
+
+## Core Concepts
+
+<CardGroup cols={3}>
+  <Card title="Model" icon="database">
+    Application state and data structures
+  </Card>
+  <Card title="View" icon="eye">
+    UI declaration using GTK widgets
+  </Card>
+  <Card title="Update" icon="arrows-rotate">
+    Message handlers that modify state
+  </Card>
+</CardGroup>
+
+### The Component Trait
+
+Every Relm4 component implements the `SimpleComponent` trait:
+
+```rust
+pub trait SimpleComponent {
+    type Init;      // Initialization data
+    type Input;     // Messages this component receives
+    type Output;    // Messages this component sends to parent
+    type Widgets;   // Generated widget structure
+    
+    fn init(...) -> ComponentParts<Self>;
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>);
+}
+```
+
+## Main Window Component
+
+The `AppModel` is the root component managing the entire application:
+
+### Model Structure
+
+```rust src/ui/window.rs
+#[tracker::track]
+pub struct AppModel {
+    mainwindow: adw::ApplicationWindow,
+    pub position: Vec<String>,
+    pub refposition: Vec<String>,
+    tree: AttrTree,
+    attributes: FactoryVecDeque<AttrPos>,
+    options: FactoryVecDeque<OptPos>,
+    posbtn: FactoryVecDeque<AttrBtn>,
+    pub conf: HashMap<String, String>,
+    page: Page,
+    header: HeaderBar,
+    search: bool,
+    busy: bool,
+    pub data: HashMap<String, OptionData>,
+    pub editedopts: HashMap<String, String>,
+    // ... child components
+    optionpage: Controller<OptPageModel>,
+    searchpage: Controller<SearchPageModel>,
+    rebuild: Controller<RebuildModel>,
+    // ...
+}
+```
+
+<Accordion title="Field Descriptions">
+- **position**: Current location in the option tree (e.g., `["services", "nginx"]`)
+- **refposition**: Reference position handling special attributes like `<name>` and `*`
+- **tree**: Hierarchical structure of all available options
+- **attributes/options**: Factory collections for dynamic list rendering
+- **conf**: Current configuration values from the Nix file
+- **editedopts**: Pending changes not yet saved
+- **data**: Complete NixOS option metadata database
+- **Child components**: Other UI screens managed by this window
+</Accordion>
+
+### Message Enum
+
+```rust src/ui/window.rs
+pub enum AppMsg {
+    Welcome,
+    InitialLoad(LoadValues),
+    LoadError(String, String),
+    TryLoad,
+    Close,
+    SetConfig(NixDataConfig),
+    MoveTo(Vec<String>, Vec<String>),
+    MoveToSelf,
+    OpenOption(Vec<String>, Vec<String>),
+    ShowSearch,
+    HideSearch,
+    ToggleSearch,
+    EditOpt(String, String),
+    Rebuild,
+    SaveConfig,
+    // ...
+}
+```
+
+<Note>
+Messages represent all possible actions in the application. They are dispatched by UI events, async tasks, or child components.
+</Note>
+
+### Update Logic
+
+```rust src/ui/window.rs
+fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+    self.reset();
+    match msg {
+        AppMsg::MoveTo(pos, newref) if !self.busy => {
+            debug!("Moving to {:?}", pos);
+            let mut attributes_guard = self.attributes.guard();
+            let mut options_guard = self.options.guard();
+            
+            // Clear existing items
+            options_guard.clear();
+            attributes_guard.clear();
+            
+            // Populate with new location's attributes and options
+            if let Some(x) = attrloc(&self.tree, newref.to_vec()) {
+                for attr in x.attributes.keys() {
+                    // Add attributes...
+                }
+                for op in x.options {
+                    // Add options...
+                }
+            }
+            
+            self.position = pos;
+            self.set_page(Page::List);
+        }
+        AppMsg::EditOpt(opt, value) => {
+            if self.conf.get(&opt).is_none() && value.is_empty() {
+                self.editedopts.remove(&opt);
+            } else {
+                self.editedopts.insert(opt, value);
+            }
+        }
+        // ... other message handlers
+    }
+}
+```
+
+<Warning>
+The `#[tracker::track]` macro generates change tracking for the model. Always call `self.reset()` at the start of `update()` to clear change flags.
+</Warning>
+
+## View Macro
+
+Relm4 uses a declarative macro for building UIs:
+
+```rust src/ui/window.rs
+view! {
+    main_window = adw::ApplicationWindow {
+        set_default_width: 1000,
+        set_default_height: 650,
+        #[watch]
+        set_sensitive: !model.busy,
+        
+        #[wrap(Some)]
+        set_content: main_box = &gtk::Box {
+            set_orientation: gtk::Orientation::Vertical,
+            
+            adw::HeaderBar {
+                pack_start = &gtk::Button {
+                    set_label: "Rebuild",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(AppMsg::Rebuild);
+                    },
+                }
+            },
+            
+            gtk::Stack {
+                #[name(treeview)]
+                adw::PreferencesPage {
+                    // Option list view
+                },
+                #[name(optpage)]
+                gtk::Box {
+                    append: model.optionpage.widget()
+                }
+            }
+        }
+    }
+}
+```
+
+<Tabs>
+  <Tab title="Property Directives">
+    ```rust
+    set_property_name: value
+    ```
+    Sets a widget property to a constant value.
+  </Tab>
+  
+  <Tab title="Watch Directive">
+    ```rust
+    #[watch]
+    set_property: model.some_field
+    ```
+    Automatically updates the property when `model.some_field` changes.
+  </Tab>
+  
+  <Tab title="Signal Connections">
+    ```rust
+    connect_signal[sender] => move |widget| {
+        sender.input(SomeMessage);
+    }
+    ```
+    Connects GTK signals to message dispatching.
+  </Tab>
+</Tabs>
+
+## Major UI Components
+
+### Option Page Component
+
+Displays detailed information about a single NixOS option:
+
+```rust src/ui/optionpage.rs
+#[tracker::track]
+pub struct OptPageModel {
+    pub opt: Vec<String>,
+    pub refopt: Vec<String>,
+    pub data: OptionData,
+    pub conf: String,
+    pub modifiedconf: String,
+    alloptions: Vec<String>,
+    scheme: Option<sourceview5::StyleScheme>,
+    saving: bool,
+    async_handler: WorkerController<SaveAsyncHandler>,
+}
+
+pub enum OptPageMsg {
+    UpdateOption(Box<OptionData>, Vec<String>, Vec<String>, String, Vec<String>),
+    UpdateConf(String),
+    ResetConf,
+    ClearConf,
+    SaveConf,
+    DoneSaving(bool, String),
+    SetScheme(String),
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Description Rendering" icon="file-lines">
+    Converts Markdown documentation to Pango markup using Pandoc
+  </Card>
+  <Card title="Syntax Highlighting" icon="code">
+    Uses GtkSourceView for Nix syntax highlighting in the code editor
+  </Card>
+  <Card title="Type-Specific Widgets" icon="toggle-on">
+    Shows appropriate input widgets based on option type (boolean, string, number, etc.)
+  </Card>
+  <Card title="Async Validation" icon="check-circle">
+    Validates changes in background worker before saving
+  </Card>
+</CardGroup>
+
+### Search Page Component
+
+```rust src/ui/searchpage.rs
+pub struct SearchPageModel {
+    pub options: Vec<(String, bool, String)>,
+    pub oplst: FactoryVecDeque<SearchOption>,
+    query: String,
+    modifiedonly: bool,
+}
+
+pub enum SearchPageMsg {
+    Search(String, HashMap<String, String>),
+    OpenOption(Vec<String>, Option<Vec<String>>),
+    LoadOptions(Vec<(String, bool, String)>),
+    SetModifiedOnly(bool, bool),
+}
+```
+
+The search implementation uses fuzzy matching:
+
+```rust src/ui/searchpage.rs
+SearchPageMsg::Search(query, editedopts) => {
+    oplst_guard.clear();
+    let q = query.split_whitespace();
+    let mut sortedoptions = self.options.clone();
+    
+    sortedoptions = sortedoptions
+        .iter()
+        .filter(|x| {
+            for part in q.clone() {
+                if x.0.to_lowercase().contains(&part.to_lowercase()) {
+                    return true;
+                }
+            }
+            false
+        })
+        .map(|x| x.to_owned())
+        .collect::<Vec<_>();
+    
+    // Sort by match count and option name length
+    sortedoptions.sort_by(|a, b| {
+        let mut acount = 0;
+        let mut bcount = 0;
+        for part in q.clone() {
+            acount += a.0.to_lowercase().matches(&part.to_lowercase()).count();
+            bcount += b.0.to_lowercase().matches(&part.to_lowercase()).count();
+        }
+        match acount.cmp(&bcount) {
+            Ordering::Greater => Ordering::Less,
+            Ordering::Less => Ordering::Greater,
+            Ordering::Equal => a.0.len().cmp(&b.0.len()),
+        }
+    });
+}
+```
+
+### Rebuild Dialog Component
+
+```rust src/ui/rebuild.rs
+#[tracker::track]
+pub struct RebuildModel {
+    hidden: bool,
+    status: RebuildStatus,
+    config: String,
+    path: String,
+    flake: Option<String>,
+    terminal: vte::Terminal,
+}
+
+pub enum RebuildMsg {
+    Rebuild(String, String, Option<String>),
+    FinishSuccess,
+    FinishError(Option<String>),
+    WriteConfig(String, String, bool),
+    KeepEditing,
+    Reset,
+    Save,
+    Close,
+}
+```
+
+The rebuild component embeds a VTE terminal:
+
+```rust src/ui/rebuild.rs
+RebuildMsg::Rebuild(f, path, flake) => {
+    self.terminal.spawn_async(
+        vte::PtyFlags::DEFAULT,
+        Some("/"),
+        &[
+            "/usr/bin/env",
+            "pkexec",
+            &format!("{}/nce-helper", LIBEXECDIR),
+            "write-rebuild",
+            "--content",
+            &f,
+            "--path",
+            &path,
+            "--",
+            "switch",
+            "--flake",
+            &flake,
+        ],
+        &[],
+        glib::SpawnFlags::DEFAULT,
+        || (),
+        -1,
+        gio::Cancellable::NONE,
+        |_, _, _| (),
+    );
+}
+```
+
+<Info>
+The terminal automatically calls `RebuildMsg::FinishSuccess` or `RebuildMsg::FinishError` when the process exits, using GTK's signal connection at `src/ui/rebuild.rs:132`.
+</Info>
+
+## Factory Pattern
+
+Relm4 factories create dynamic lists of widgets:
+
+```rust
+attributes: FactoryVecDeque<AttrPos>
+```
+
+Factories automatically:
+- Create widgets when items are added
+- Update widgets when items change
+- Remove widgets when items are removed
+- Handle widget recycling for performance
+
+```rust src/ui/window.rs
+let mut attributes_guard = self.attributes.guard();
+attributes_guard.clear();
+for attr in attributes_to_display {
+    attributes_guard.push_back(attr);
+}
+```
+
+<Warning>
+Always drop guards before calling other functions that might need to access the same factory, or you'll create a deadlock.
+
+```rust
+attributes_guard.drop();
+```
+</Warning>
+
+## Component Communication
+
+Components communicate through message passing:
+
+```rust src/ui/window.rs
+// Initialize child component
+let optionpage = OptPageModel::builder()
+    .launch(())
+    .forward(sender.input_sender(), identity);
+
+// Send message to child
+self.optionpage.emit(OptPageMsg::UpdateOption(
+    data,
+    position,
+    refposition,
+    current_value,
+));
+
+// Child sends message to parent via Output type
+let _ = sender.output(AppMsg::EditOpt(opt, value));
+```
+
+<Steps>
+  <Step title="Component Creation">
+    Use the builder pattern to create child components during initialization.
+  </Step>
+  
+  <Step title="Message Forwarding">
+    The `.forward()` method automatically converts child output messages to parent input messages.
+  </Step>
+  
+  <Step title="Emit to Children">
+    Use `.emit()` to send messages to child components.
+  </Step>
+  
+  <Step title="Output to Parent">
+    Children use `sender.output()` to send messages up the component tree.
+  </Step>
+</Steps>
+
+## Async Workers
+
+Long-running operations use worker components:
+
+```rust src/ui/window.rs
+windowloading: WorkerController<WindowAsyncHandler>
+
+let windowloading = WindowAsyncHandler::builder()
+    .detach_worker(())
+    .forward(sender.input_sender(), identity);
+
+windowloading.emit(WindowAsyncHandlerMsg::RunWindow(config_path));
+```
+
+Workers run in background threads, preventing UI freezes during expensive operations like parsing large configuration files.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="State Management" icon="database">
+    Keep all state in the model. Never store state in closures or outside components.
+  </Card>
+  
+  <Card title="Message Granularity" icon="envelope">
+    Create specific messages for each action. Avoid generic messages with large payloads.
+  </Card>
+  
+  <Card title="Guard Discipline" icon="lock">
+    Always drop factory guards before performing other operations.
+  </Card>
+  
+  <Card title="Type Safety" icon="shield">
+    Use enums for messages and states. Let the compiler catch invalid state transitions.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Parsing" icon="file-code" href="./parsing">
+    Learn how Nix configurations are parsed and modified
+  </Card>
+  
+  <Card title="Building from Source" icon="hammer" href="./building">
+    Set up your development environment
+  </Card>
+</CardGroup>

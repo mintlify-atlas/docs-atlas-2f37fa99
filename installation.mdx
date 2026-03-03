@@ -1,0 +1,233 @@
+---
+title: Installation
+description: Install NixOS Configuration Editor using Flakes, traditional NixOS, or standalone methods
+---
+
+NixOS Configuration Editor can be installed in several ways depending on your setup. Choose the method that best fits your workflow.
+
+<Note>
+  For installation methods other than system packages (Flakes or traditional NixOS), you'll be prompted to authenticate twice in a row when rebuilding your system.
+</Note>
+
+## NixOS with Flakes (recommended)
+
+The recommended installation method for systems using Flakes.
+
+<Steps>
+  <Step title="Add the input to your flake.nix">
+    Add `nixos-conf-editor` to your flake inputs:
+
+    ```nix flake.nix
+    {
+      inputs = {
+        nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+        nixos-conf-editor.url = "github:snowfallorg/nixos-conf-editor";
+        # ... other inputs
+      };
+    }
+    ```
+  </Step>
+
+  <Step title="Add to system packages">
+    In your `configuration.nix`, add the package to your system:
+
+    ```nix configuration.nix
+    { config, pkgs, inputs, system, ... }:
+
+    {
+      environment.systemPackages = with pkgs; [
+        inputs.nixos-conf-editor.packages.${system}.nixos-conf-editor
+        # ... rest of your packages
+      ];
+    }
+    ```
+  </Step>
+
+  <Step title="Rebuild your system">
+    Apply the changes:
+
+    ```bash
+    sudo nixos-rebuild switch --flake .#your-hostname
+    ```
+  </Step>
+</Steps>
+
+## Traditional NixOS
+
+For systems not using Flakes, you can install directly from GitHub.
+
+<Steps>
+  <Step title="Add to configuration.nix">
+    Add this to the head of your `configuration.nix`:
+
+    <Note>
+      This example uses version 0.1.2. Check the [releases page](https://github.com/snowfallorg/nixos-conf-editor/releases) for the latest version and update the `rev` and `sha256` accordingly.
+    </Note>
+
+    ```nix configuration.nix
+    { config, pkgs, lib, ... }:
+    let
+      nixos-conf-editor = import (pkgs.fetchFromGitHub {
+        owner = "snowfallorg";
+        repo = "nixos-conf-editor";
+        rev = "0.1.2";
+        sha256 = "sha256-/ktLbmF1pU3vFHeGooDYswJipNE2YINm0WpF9Wd1gw8=";
+      });
+    in
+    {
+      # ... rest of your configuration
+    }
+    ```
+  </Step>
+
+  <Step title="Add to system packages">
+    In the same file, add to your packages:
+
+    ```nix configuration.nix
+    environment.systemPackages = with pkgs; [
+      nixos-conf-editor.packages.${stdenv.hostPlatform.system}.nixos-conf-editor
+      # ... rest of your packages
+    ];
+    ```
+  </Step>
+
+  <Step title="Rebuild your system">
+    ```bash
+    sudo nixos-rebuild switch
+    ```
+  </Step>
+</Steps>
+
+## User installation with nix profile
+
+Install for your user only without modifying system configuration.
+
+```bash
+nix profile install github:snowfallorg/nixos-conf-editor
+```
+
+<Warning>
+  When using this installation method, you'll be prompted to authenticate twice in a row when rebuilding your configuration through the GUI.
+</Warning>
+
+## User installation with nix-env
+
+Alternative user-level installation using `nix-env`.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/snowfallorg/nixos-conf-editor
+    ```
+  </Step>
+
+  <Step title="Install with nix-env">
+    ```bash
+    nix-env -f nixos-conf-editor -i nixos-conf-editor
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Like `nix profile`, this method will require double authentication when rebuilding.
+</Warning>
+
+## Run without installing
+
+You can try NixOS Configuration Editor without installing it.
+
+<CodeGroup>
+
+```bash Flakes enabled
+nix run github:snowfallorg/nixos-conf-editor
+```
+
+```bash Flakes not enabled
+nix --extra-experimental-features "nix-command flakes" run github:snowfallorg/nixos-conf-editor
+```
+
+</CodeGroup>
+
+This is useful for:
+- Testing the application before installing
+- One-off configuration changes
+- Running on systems where you can't modify the configuration
+
+<Warning>
+  Running without installation will always prompt for authentication twice when rebuilding.
+</Warning>
+
+## Verifying installation
+
+After installation, verify that NixOS Configuration Editor is available:
+
+<CodeGroup>
+
+```bash Command line
+nixos-conf-editor --version
+```
+
+```bash Application launcher
+# Search for "Configuration Editor" in your application menu
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Command not found after installation">
+    If you installed using `nix profile` or `nix-env`, ensure your PATH includes `~/.nix-profile/bin`:
+
+    ```bash
+    echo $PATH | grep -q ".nix-profile/bin" || echo 'export PATH="$HOME/.nix-profile/bin:$PATH"' >> ~/.bashrc
+    ```
+
+    Then restart your shell or run `source ~/.bashrc`.
+  </Accordion>
+
+  <Accordion title="Double authentication prompts">
+    This is expected behavior when installing via `nix profile`, `nix-env`, or running directly with `nix run`. To avoid this:
+
+    1. Install as a system package using Flakes or traditional NixOS methods
+    2. Or accept the double authentication as a security tradeoff
+
+    The double prompt occurs because the application runs as your user but needs to modify system files and rebuild.
+  </Accordion>
+
+  <Accordion title="Hash mismatch errors">
+    If you get a hash mismatch when using the traditional NixOS installation:
+
+    1. Use `nix-prefetch-github` to get the correct hash:
+       ```bash
+       nix-shell -p nix-prefetch-github --run "nix-prefetch-github snowfallorg nixos-conf-editor --rev 0.1.2"
+       ```
+    2. Update the `sha256` in your configuration with the output
+  </Accordion>
+
+  <Accordion title="Flake input not found">
+    Ensure you're passing the `inputs` to your configuration. In your `flake.nix`:
+
+    ```nix
+    outputs = { self, nixpkgs, nixos-conf-editor, ... }:
+    {
+      nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        specialArgs = { inherit inputs; }; # Make inputs available
+        modules = [ ./configuration.nix ];
+      };
+    };
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Learn how to use NixOS Configuration Editor
+  </Card>
+  <Card title="Preferences" icon="sliders" href="/guides/preferences">
+    Configure the editor for your setup
+  </Card>
+</CardGroup>

@@ -1,0 +1,265 @@
+---
+title: "Rebuilding system"
+description: "Apply your configuration changes to your NixOS system"
+---
+
+After editing your configuration, you need to rebuild your system to apply the changes. The NixOS Configuration Editor integrates the rebuild process with real-time terminal output.
+
+## Understanding the rebuild process
+
+NixOS uses a declarative configuration model. When you rebuild:
+
+1. Your configuration file is written to disk
+2. NixOS evaluates the configuration
+3. Required packages are built or downloaded
+4. System state is updated to match your configuration
+5. Services are restarted as needed
+
+<Note>
+The rebuild process runs `nixos-rebuild switch` behind the scenes, which requires root privileges.
+</Note>
+
+## Starting a rebuild
+
+<Steps>
+  <Step title="Make your configuration changes">
+    Edit the options you want to modify using the configuration editor.
+  </Step>
+  
+  <Step title="Click the rebuild button">
+    This opens the rebuild dialog and prompts for authentication.
+  </Step>
+  
+  <Step title="Authenticate with pkexec">
+    Enter your password when prompted. The editor uses `pkexec` for privilege escalation.
+  </Step>
+  
+  <Step title="Monitor the progress">
+    Watch the terminal output to see the rebuild process in real-time.
+  </Step>
+</Steps>
+
+## The rebuild dialog
+
+The rebuild dialog shows three states:
+
+### Building
+
+While the rebuild is running, you'll see:
+- A spinning progress indicator
+- "Building..." status message
+- Live terminal output showing what's happening
+
+```rust
+// From src/ui/rebuild.rs:72-83
+gtk::Box {
+    set_orientation: gtk::Orientation::Vertical,
+    set_spacing: 10,
+    gtk::Spinner {
+        set_spinning: true,
+        set_height_request: 60,
+    },
+    gtk::Label {
+        set_label: "Building...",
+        add_css_class: "title-1",
+    },
+}
+```
+
+### Success
+
+When the rebuild completes successfully:
+- Green checkmark icon appears
+- "Done! Rebuild successful!" message is shown
+- Click **Close** to dismiss the dialog
+
+<Tip>
+A successful rebuild means your changes are now active. Services affected by your changes have been restarted automatically.
+</Tip>
+
+### Error
+
+If the rebuild fails:
+- Red error icon appears
+- "Error! Rebuild failed!" message is shown
+- Terminal output shows the error details
+- You have three options:
+
+<CardGroup cols={3}>
+  <Card title="Keep Editing" icon="pen">
+    Close the dialog and fix the configuration issues.
+  </Card>
+  
+  <Card title="Reset Changes" icon="rotate-left">
+    Discard all changes and restore the previous configuration.
+  </Card>
+  
+  <Card title="Save Anyways" icon="floppy-disk">
+    Force save the configuration despite errors (use with caution).
+  </Card>
+</CardGroup>
+
+## Viewing terminal output
+
+The rebuild dialog includes an embedded terminal that shows real-time output. This is implemented using the VTE (Virtual Terminal Emulator) widget:
+
+```rust
+// From src/ui/rebuild.rs:122-140
+gtk::Frame {
+    gtk::ScrolledWindow {
+        terminal -> vte::Terminal {
+            set_vexpand: true,
+            set_hexpand: true,
+            set_input_enabled: false,
+            connect_child_exited[sender] => move |_term, status| {
+                if status == 0 {
+                    sender.input(RebuildMsg::FinishSuccess);
+                } else {
+                    sender.input(RebuildMsg::FinishError(None));
+                }
+            }
+        }
+    }
+}
+```
+
+The terminal output includes:
+- Package downloads and builds
+- Configuration evaluation progress
+- Service restart notifications
+- Error messages if something goes wrong
+
+<Info>
+The terminal output is read-only. You can scroll through it but not interact with the build process.
+</Info>
+
+## Rebuild command details
+
+The editor constructs different rebuild commands based on your configuration:
+
+### Standard configuration
+
+For traditional NixOS configurations:
+
+```bash
+pkexec nce-helper write-rebuild \
+  --content "<config>" \
+  --path "/etc/nixos/configuration.nix" \
+  -- switch -I "nixos-config=/etc/nixos/configuration.nix"
+```
+
+### Flake-based configuration
+
+For systems using Nix flakes:
+
+```bash
+pkexec nce-helper write-rebuild \
+  --content "<config>" \
+  --path "/path/to/flake.nix" \
+  -- switch --flake "/path/to/flake.nix#hostname"
+```
+
+The implementation in `src/ui/rebuild.rs:221-277` handles both cases:
+
+```rust
+if let Some(flake) = flake {
+    self.terminal.spawn_async(
+        vte::PtyFlags::DEFAULT,
+        Some("/"),
+        &[
+            "/usr/bin/env",
+            "pkexec",
+            &format!("{}/nce-helper", LIBEXECDIR),
+            "write-rebuild",
+            "--content", &f,
+            "--path", &path,
+            "--", "switch",
+            "--flake", &flake,
+        ],
+        // ...
+    );
+}
+```
+
+## Different rebuild modes
+
+While the editor defaults to `switch`, NixOS supports several rebuild modes:
+
+<AccordionGroup>
+  <Accordion title="switch" icon="arrows-rotate">
+    Builds the new configuration and makes it the default. Restarts affected services immediately.
+    
+    **This is what the editor uses by default.**
+  </Accordion>
+  
+  <Accordion title="boot" icon="power-off">
+    Builds the new configuration and makes it the default for next boot, but doesn't affect the running system.
+    
+    **Not currently available in the UI, but could be added.**
+  </Accordion>
+  
+  <Accordion title="test" icon="flask">
+    Builds and activates the configuration but doesn't make it the boot default.
+    
+    **Useful for testing changes without committing to them.**
+  </Accordion>
+  
+  <Accordion title="build" icon="hammer">
+    Only builds the configuration without activating it.
+    
+    **Useful for checking if the configuration is valid.**
+  </Accordion>
+</AccordionGroup>
+
+## Handling rebuild failures
+
+When a rebuild fails, the terminal output is your primary debugging tool:
+
+### Common failure reasons
+
+<Warning>
+**Syntax errors**: Check for missing semicolons, brackets, or quotes in your configuration.
+</Warning>
+
+<Warning>
+**Type errors**: Ensure values match the expected types for each option.
+</Warning>
+
+<Warning>
+**Undefined options**: Verify that option names are spelled correctly.
+</Warning>
+
+<Warning>
+**Package unavailable**: Some packages may not be available for your NixOS version or architecture.
+</Warning>
+
+### Recovery steps
+
+1. **Read the error message** in the terminal output carefully
+2. **Click Keep Editing** to fix the issue
+3. **Navigate to the problematic option** mentioned in the error
+4. **Correct the value** and try rebuilding again
+5. If stuck, **Reset Changes** to return to a known-good state
+
+## Best practices
+
+<Tip>
+- **Make small, incremental changes** and rebuild frequently
+- **Read the terminal output** to understand what's being changed
+- **Test critical changes** on a non-production system first
+- **Keep a backup** of your working configuration
+- **Document complex configurations** with comments
+</Tip>
+
+## After a successful rebuild
+
+Once your rebuild succeeds:
+
+1. Your new configuration is active
+2. The system configuration has been saved
+3. Modified services have been restarted
+4. You can continue making more changes
+
+<Info>
+Your configuration is automatically added to the boot menu, allowing you to roll back to previous configurations if needed.
+</Info>

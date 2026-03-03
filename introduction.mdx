@@ -1,0 +1,112 @@
+---
+title: Introduction
+description: A graphical tool for managing NixOS configurations with ease
+---
+
+NixOS Configuration Editor is a simple, powerful desktop application for modifying and managing NixOS configurations. Built with modern GTK4 and libadwaita, it provides an intuitive graphical interface to explore, edit, and rebuild your NixOS system.
+
+<CardGroup cols={2}>
+  <Card title="Get started" icon="rocket" href="/installation">
+    Install NixOS Configuration Editor on your system
+  </Card>
+  <Card title="Quick start" icon="bolt" href="/quickstart">
+    Learn the basics in under 5 minutes
+  </Card>
+  <Card title="User guide" icon="book-open" href="/guides/browsing-options">
+    Learn how to use the editor effectively
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/snowfallorg/nixos-conf-editor">
+    View source code and contribute
+  </Card>
+</CardGroup>
+
+## What is NixOS Configuration Editor?
+
+NixOS Configuration Editor bridges the gap between NixOS's powerful declarative configuration and the ease of graphical interfaces. Instead of manually editing configuration files and searching through documentation, you can browse available options, see their types and defaults, and make changes with immediate visual feedback.
+
+<Note>
+  NixOS Configuration Editor works with both traditional NixOS configurations and Flakes-based setups.
+</Note>
+
+## Key features
+
+<AccordionGroup>
+  <Accordion title="Browse NixOS options hierarchically">
+    Navigate through your NixOS configuration using a tree-structured interface. Options are organized by category (services, programs, networking, etc.), making it easy to discover and explore settings.
+  </Accordion>
+
+  <Accordion title="Search across all options">
+    Use the built-in search (Ctrl+F) to quickly find any configuration option across your entire NixOS system. Search results show you whether each option is currently configured.
+  </Accordion>
+
+  <Accordion title="View option metadata">
+    For every option, see:
+    - Detailed description from the NixOS manual
+    - Type information (string, boolean, integer, list, etc.)
+    - Default values
+    - Example configurations
+  </Accordion>
+
+  <Accordion title="Edit with syntax highlighting">
+    The built-in editor uses GtkSourceView with Nix syntax highlighting. Simple values (booleans, strings, integers) get specialized input widgets for quick editing.
+  </Accordion>
+
+  <Accordion title="Rebuild directly from the GUI">
+    Test your changes immediately with the Rebuild button. Watch the build process in a terminal view and get instant feedback on success or errors.
+  </Accordion>
+
+  <Accordion title="Track modifications">
+    See at a glance which options you've modified. Filter views to show only configured or modified options.
+  </Accordion>
+
+  <Accordion title="Support for complex configurations">
+    Edit nested attribute sets, lists, and named configurations. The editor handles `<name>` placeholders (like `services.<name>`) and array indices automatically.
+  </Accordion>
+</AccordionGroup>
+
+## How it works
+
+NixOS Configuration Editor reads your NixOS configuration files (typically `/etc/nixos/configuration.nix`) and loads the complete option set from your system. When you make changes:
+
+<Steps>
+  <Step title="Edit options">
+    Modify values using the graphical interface with real-time validation
+  </Step>
+  <Step title="Save changes">
+    Changes are validated against expected types before being saved
+  </Step>
+  <Step title="Rebuild (optional)">
+    Trigger `nixos-rebuild switch` directly from the GUI to apply changes
+  </Step>
+</Steps>
+
+All modifications are written back to your configuration files using the `nix-editor` library, preserving formatting and comments where possible.
+
+<Warning>
+  The rebuild operation requires root privileges. You'll be prompted to authenticate via polkit when rebuilding or saving changes to system configuration files.
+</Warning>
+
+## Technology
+
+NixOS Configuration Editor is built with:
+
+- **GTK4** and **libadwaita** for modern, adaptive UI
+- **Relm4** for reactive component architecture  
+- **Rust** for performance and reliability
+- **nix-editor** for safe configuration file manipulation
+- **GtkSourceView** for syntax-highlighted code editing
+
+## License
+
+NixOS Configuration Editor is licensed under GPLv3. The application icons incorporate elements from the [NixOS logo](https://github.com/NixOS/nixos-artwork/tree/master/logo) and are licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+## Getting help
+
+<CardGroup cols={2}>
+  <Card title="Matrix chat" icon="comments" href="https://matrix.to/#/#snowflakeos:matrix.org">
+    Join the community on Matrix
+  </Card>
+  <Card title="Discord server" icon="discord" href="https://discord.gg/6rWNMmdkgT">
+    Chat with other users on Discord
+  </Card>
+</CardGroup>

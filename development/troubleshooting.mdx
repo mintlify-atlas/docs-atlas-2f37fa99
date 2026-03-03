@@ -1,0 +1,343 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for NixOS Configuration Editor
+---
+
+This guide covers common issues you might encounter when using or developing NixOS Configuration Editor, along with their solutions.
+
+## Installation issues
+
+<AccordionGroup>
+  <Accordion title="Authentication prompts appearing twice">
+    **Problem**: When using non-system installation methods (`nix profile install` or `nix-env`), you're prompted to authenticate twice during rebuilds.
+    
+    **Cause**: The `nce-helper` binary is not installed in a system location with appropriate sudo configuration.
+    
+    **Solution**: Use the system-wide installation method via `configuration.nix` or flakes:
+    
+    ```nix
+    # In flake.nix inputs
+    nixos-conf-editor.url = "github:snowfallorg/nixos-conf-editor";
+    
+    # In configuration.nix
+    environment.systemPackages = [
+      inputs.nixos-conf-editor.packages.${system}.nixos-conf-editor
+    ];
+    ```
+    
+    This properly sets up the helper binary with system permissions.
+  </Accordion>
+  
+  <Accordion title="Package not found in nixpkgs">
+    **Problem**: `nix-env` or `nix profile` can't find the package.
+    
+    **Solution**: NixOS Configuration Editor is not in the main nixpkgs repository. Use the GitHub flake directly:
+    
+    ```bash
+    nix profile install github:snowfallorg/nixos-conf-editor
+    ```
+  </Accordion>
+  
+  <Accordion title="Flake experimental features not enabled">
+    **Problem**: Error about experimental features when running `nix run`.
+    
+    **Solution**: Enable flakes either temporarily or permanently:
+    
+    **Temporary (single command):**
+    ```bash
+    nix --extra-experimental-features "nix-command flakes" run github:snowfallorg/nixos-conf-editor
+    ```
+    
+    **Permanent (in configuration.nix):**
+    ```nix
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Runtime issues
+
+<AccordionGroup>
+  <Accordion title="Application fails to launch">
+    **Problem**: The application crashes immediately or shows an error on startup.
+    
+    **Debugging steps:**
+    
+    1. **Enable debug logging** to see detailed error messages:
+       ```bash
+       RUST_LOG=nixos_conf_editor=debug nixos-conf-editor
+       ```
+    
+    2. **Check GTK/libadwaita installation**:
+       ```bash
+       # Verify GTK4 is available
+       pkg-config --modversion gtk4
+       
+       # Verify libadwaita is available
+       pkg-config --modversion libadwaita-1
+       ```
+    
+    3. **Check for missing dependencies**:
+       ```bash
+       # On NixOS, this shouldn't happen, but verify:
+       ldd $(which nixos-conf-editor)
+       ```
+  </Accordion>
+  
+  <Accordion title="Configuration file not found">
+    **Problem**: Application can't find your NixOS configuration file.
+    
+    **Solution**: Set the configuration path in Preferences:
+    
+    <Steps>
+      <Step title="Open Preferences">
+        Click the menu button (three dots) and select **Preferences**.
+      </Step>
+      
+      <Step title="Select configuration file">
+        Click **Select File** and navigate to your `configuration.nix` or `flake.nix`.
+        
+        Common locations:
+        - `/etc/nixos/configuration.nix` (traditional)
+        - `/etc/nixos/flake.nix` (flakes)
+        - `~/.config/nixos/flake.nix` (user flakes)
+      </Step>
+      
+      <Step title="Enable flake support if needed">
+        If using flakes, toggle **Flake Support** on and configure flake arguments.
+      </Step>
+    </Steps>
+  </Accordion>
+  
+  <Accordion title="Options not loading or appearing empty">
+    **Problem**: The option list is empty or not all options are shown.
+    
+    **Possible causes and solutions:**
+    
+    1. **Missing NixOS option metadata**: The application requires NixOS option metadata from your system.
+       ```bash
+       # Ensure you're on NixOS
+       nixos-version
+       
+       # Rebuild to ensure metadata is current
+       sudo nixos-rebuild switch
+       ```
+    
+    2. **Parsing errors**: Check debug logs for parsing errors:
+       ```bash
+       RUST_LOG=nixos_conf_editor=debug nixos-conf-editor 2>&1 | grep -i error
+       ```
+    
+    3. **Incompatible NixOS version**: Ensure you're running a supported NixOS version (22.11 or later).
+  </Accordion>
+  
+  <Accordion title="Changes not saving">
+    **Problem**: Edits are lost when closing the option page or restarting the application.
+    
+    **Solution**: 
+    
+    1. **Check for syntax errors**: Invalid Nix syntax will prevent saving. Look for error indicators in the UI.
+    
+    2. **Verify file permissions**: Ensure you have write access to the configuration file:
+       ```bash
+       ls -l /etc/nixos/configuration.nix
+       ```
+    
+    3. **Check for read-only options**: Some options are marked read-only and cannot be edited through the UI.
+  </Accordion>
+  
+  <Accordion title="Rebuild fails">
+    **Problem**: System rebuild fails when triggered from the application.
+    
+    **Debugging steps:**
+    
+    1. **Review error output**: The rebuild dialog shows terminal output. Read error messages carefully.
+    
+    2. **Test rebuild manually**:
+       ```bash
+       sudo nixos-rebuild test
+       ```
+    
+    3. **Check configuration syntax**:
+       ```bash
+       nixos-rebuild dry-build
+       ```
+    
+    4. **Common rebuild errors**:
+       - **Syntax errors**: Fix Nix syntax in your configuration
+       - **Missing packages**: Ensure all referenced packages exist
+       - **Conflicting options**: Check for option conflicts
+       - **Network issues**: Ensure you can reach cache.nixos.org
+  </Accordion>
+</AccordionGroup>
+
+## Build and development issues
+
+<AccordionGroup>
+  <Accordion title="Meson setup fails">
+    **Problem**: `meson setup build` fails with dependency errors.
+    
+    **Solution**: Ensure all build dependencies are installed. On NixOS:
+    
+    ```bash
+    nix-shell shells/default.nix
+    ```
+    
+    On other distributions, install:
+    - GTK4 development files
+    - libadwaita development files
+    - Rust toolchain (stable)
+    - Meson and ninja
+    - pkg-config
+  </Accordion>
+  
+  <Accordion title="Cargo build errors">
+    **Problem**: Rust compilation fails with dependency errors.
+    
+    **Solutions**:
+    
+    1. **Update Rust toolchain**:
+       ```bash
+       rustup update stable
+       ```
+    
+    2. **Clean build artifacts**:
+       ```bash
+       cargo clean
+       rm -rf build/
+       meson setup build
+       ```
+    
+    3. **Check Cargo.lock**:
+       ```bash
+       # Regenerate lock file if corrupted
+       rm Cargo.lock
+       cargo generate-lockfile
+       ```
+  </Accordion>
+  
+  <Accordion title="Resource files not found at runtime">
+    **Problem**: Application can't find UI resource files (`.ui` files, icons, etc.).
+    
+    **Cause**: Development build not properly installed or resource paths incorrect.
+    
+    **Solution**: 
+    
+    ```bash
+    # Install to a local prefix for testing
+    meson setup --prefix=$HOME/.local build
+    meson install -C build
+    
+    # Or run from build directory with proper resource path
+    GSETTINGS_SCHEMA_DIR=build/data ./build/src/nixos-conf-editor
+    ```
+  </Accordion>
+  
+  <Accordion title="nce-helper permission denied">
+    **Problem**: The `nce-helper` binary can't execute privileged operations during development.
+    
+    **Solution**: For development, you can manually set up sudo access:
+    
+    ```bash
+    # Build nce-helper
+    cargo build --package nce-helper
+    
+    # Copy to system location (requires sudo)
+    sudo cp target/debug/nce-helper /usr/local/bin/
+    sudo chown root:root /usr/local/bin/nce-helper
+    sudo chmod 755 /usr/local/bin/nce-helper
+    
+    # Configure sudo (add to /etc/sudoers.d/nce-helper)
+    %wheel ALL=(ALL) NOPASSWD: /usr/local/bin/nce-helper
+    ```
+    
+    <Warning>
+      This is for development only. Production installations handle this automatically.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## Performance issues
+
+<AccordionGroup>
+  <Accordion title="Slow option browsing with large configurations">
+    **Problem**: Navigating options is slow with configurations that have many options set.
+    
+    **Explanation**: The application parses the entire configuration on each navigation. Large configurations with hundreds of options can slow this down.
+    
+    **Workarounds**:
+    - Use the search function (Ctrl+F) to jump directly to options
+    - Split configuration into multiple files using imports
+    - Consider using option filtering (if available in your version)
+  </Accordion>
+  
+  <Accordion title="High memory usage">
+    **Problem**: Application uses significant memory.
+    
+    **Cause**: The application loads all NixOS option metadata and keeps the configuration AST in memory.
+    
+    **This is expected behavior** for large NixOS configurations. Modern systems should handle this without issues. If memory usage is problematic:
+    
+    1. Close unused windows (the application supports multiple windows)
+    2. Restart the application periodically
+    3. Report excessive memory usage as a potential memory leak
+  </Accordion>
+</AccordionGroup>
+
+## Getting help
+
+If you encounter an issue not covered here:
+
+<Steps>
+  <Step title="Enable debug logging">
+    Capture detailed logs:
+    ```bash
+    RUST_LOG=nixos_conf_editor=trace nixos-conf-editor 2>&1 | tee nixos-conf-editor.log
+    ```
+  </Step>
+  
+  <Step title="Check existing issues">
+    Search [GitHub issues](https://github.com/snowfallorg/nixos-conf-editor/issues) for similar problems.
+  </Step>
+  
+  <Step title="Ask the community">
+    Join our community channels:
+    - **Matrix**: [#snowflakeos:matrix.org](https://matrix.to/#/#snowflakeos:matrix.org)
+    - **Discord**: [Join server](https://discord.gg/6rWNMmdkgT)
+  </Step>
+  
+  <Step title="File a bug report">
+    If you've found a bug, [open an issue](https://github.com/snowfallorg/nixos-conf-editor/issues/new) with:
+    - Your NixOS version (`nixos-version`)
+    - Application version
+    - Steps to reproduce
+    - Debug logs
+    - Expected vs actual behavior
+  </Step>
+</Steps>
+
+## Known limitations
+
+Be aware of these current limitations:
+
+<CardGroup cols={2}>
+  <Card title="Single configuration file" icon="file">
+    The editor works with one configuration file at a time. Multi-file configurations with imports require manual navigation.
+  </Card>
+  
+  <Card title="NixOS only" icon="linux">
+    Designed for NixOS systems only. Home Manager standalone configurations are not fully supported.
+  </Card>
+  
+  <Card title="Option metadata dependency" icon="database">
+    Requires NixOS option metadata. Custom modules may not appear in the option browser.
+  </Card>
+  
+  <Card title="Limited undo" icon="rotate-left">
+    No multi-level undo. Changes are saved immediately. Use git for configuration version control.
+  </Card>
+</CardGroup>
+
+<Tip>
+  For the best experience, keep your NixOS system up to date and use the latest version of NixOS Configuration Editor.
+</Tip>

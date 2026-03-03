@@ -1,0 +1,133 @@
+---
+title: "Browsing options"
+description: "Navigate the hierarchical NixOS configuration options tree"
+---
+
+The NixOS Configuration Editor organizes all available configuration options in a hierarchical tree structure, making it easy to discover and navigate through the thousands of NixOS options.
+
+## Understanding the attribute tree
+
+NixOS configuration options are organized as a tree of attributes. Each level of the tree represents a namespace, and the full path to an option is formed by joining these attributes with dots.
+
+<Note>
+For example, `services.nginx.enable` is an option where:
+- `services` is a top-level attribute
+- `nginx` is a child attribute under `services`
+- `enable` is the final option under `nginx`
+</Note>
+
+The tree structure is built dynamically by parsing the options database and splitting option names by the `.` delimiter, as implemented in `src/parse/options.rs:43-99`:
+
+```rust
+fn buildtree(ops: Vec<&str>) -> Result<AttrTree, Box<dyn Error>> {
+    let split = ops
+        .into_iter()
+        .map(|x| x.split('.').collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let mut tree = AttrTree {
+        attributes: HashMap::new(),
+        options: vec![],
+    };
+    // ... builds hierarchical structure
+}
+```
+
+## Navigating through attributes
+
+When you browse the configuration editor, you'll see two types of items:
+
+### Attribute groups
+
+These are intermediate nodes in the tree that contain other attributes or options. Clicking on an attribute group navigates you deeper into the tree.
+
+<Steps>
+  <Step title="View current level">
+    The main view displays all attributes and options at your current position in the tree.
+  </Step>
+  
+  <Step title="Navigate into an attribute">
+    Click on any attribute name to move into that namespace and see its child attributes and options.
+  </Step>
+  
+  <Step title="Use breadcrumb navigation">
+    The header shows your current path as a series of clickable buttons. Click any part of the path to jump back to that level.
+  </Step>
+</Steps>
+
+### Configuration options
+
+These are the actual configurable settings. Options appear at the end of a path and can be clicked to view details and edit their values.
+
+## Visual indicators
+
+The interface provides visual feedback about the state of attributes and options:
+
+<CardGroup cols={2}>
+  <Card title="Configured" icon="check">
+    Options with a checkmark icon are set in your current configuration file.
+  </Card>
+  
+  <Card title="Modified" icon="play">
+    Options with a play icon have unsaved changes in the current session.
+  </Card>
+</CardGroup>
+
+These indicators are implemented in `src/ui/treefactory.rs:45-48`:
+
+```rust
+gtk::Image {
+    set_icon_name: if self.modified { 
+        Some("system-run-symbolic") 
+    } else { 
+        Some("object-select-symbolic") 
+    },
+    set_visible: self.configured || self.modified,
+}
+```
+
+## Working with dynamic attributes
+
+Some NixOS options use special patterns for dynamic configuration:
+
+### Wildcard attributes (`*`)
+
+Options containing `*` represent array indices. For example, `networking.interfaces.*.ipv4.addresses` allows you to configure multiple network interfaces.
+
+<Tip>
+When you encounter a `*` in an option path, the editor will prompt you to select an existing index or create a new one.
+</Tip>
+
+### Named attributes (`<name>`)
+
+Options with `<name>` allow you to define custom named sections. For example, `services.nginx.virtualHosts.<name>` lets you create multiple virtual hosts with your own names.
+
+<Warning>
+When creating a new named attribute, choose a meaningful name that describes its purpose. The name cannot contain dots or spaces.
+</Warning>
+
+## Attribute navigation structure
+
+The `AttrPos` and `OptPos` components (defined in `src/ui/treefactory.rs:6-116`) handle the display of attributes and options:
+
+```rust
+pub struct AttrPos {
+    pub value: Vec<String>,      // Full path as array
+    pub refvalue: Vec<String>,   // Reference path for wildcards
+    pub configured: bool,         // Set in config file?
+    pub modified: bool,           // Changed in session?
+    pub replacefor: Option<String>, // For * or <name> placeholders
+}
+```
+
+## Finding your way
+
+If you get lost navigating the tree:
+
+1. **Check the breadcrumb path** at the top - it shows exactly where you are
+2. **Click any breadcrumb button** to jump back to that level
+3. **Use search** (Ctrl+F) to find specific options directly
+4. **Start from the root** by clicking the first breadcrumb button
+
+<Info>
+The tree structure mirrors the structure of your `configuration.nix` file, making it easy to understand how options relate to each other.
+</Info>

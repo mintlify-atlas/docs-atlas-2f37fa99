@@ -1,0 +1,234 @@
+---
+title: Using with NixOS flakes
+description: Learn how to integrate NixOS Configuration Editor with NixOS flakes and snowfall-lib
+---
+
+NixOS Configuration Editor is built using [NixOS flakes](https://nixos.wiki/wiki/Flakes) and [snowfall-lib](https://snowfall.org/guides/lib/quickstart/), a flake framework that provides a structured approach to organizing NixOS configurations.
+
+## Flake integration
+
+The project uses flakes for reproducible builds and dependency management. The flake provides the `nixos-conf-editor` package that can be installed in various ways.
+
+### Project flake structure
+
+The project's `flake.nix` demonstrates a clean integration with snowfall-lib:
+
+```nix flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    snowfall-lib = {
+      url = "github:snowfallorg/lib";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    flake-compat.url = "github:edolstra/flake-compat";
+  };
+
+  outputs = inputs:
+    inputs.snowfall-lib.mkFlake {
+      inherit inputs;
+      alias.packages.default = "nixos-conf-editor";
+      src = ./.;
+    };
+}
+```
+
+### Key components
+
+<Steps>
+  <Step title="Nixpkgs input">
+    Uses the `nixos-unstable` branch for the latest packages and features.
+  </Step>
+  
+  <Step title="Snowfall-lib integration">
+    The `snowfall-lib` input provides the `mkFlake` function which automatically discovers and builds packages from the `packages/` directory structure.
+  </Step>
+  
+  <Step title="Flake-compat support">
+    Includes `flake-compat` for backwards compatibility with non-flake Nix commands through `default.nix`.
+  </Step>
+  
+  <Step title="Default package alias">
+    Sets `nixos-conf-editor` as the default package, allowing `nix run` without specifying the package name.
+  </Step>
+</Steps>
+
+## Installing with flakes
+
+### System-wide installation
+
+Add NixOS Configuration Editor to your system configuration using flakes:
+
+<Steps>
+  <Step title="Add the input to your flake.nix">
+    ```nix flake.nix
+    {
+      inputs = {
+        nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+        nixos-conf-editor.url = "github:snowfallorg/nixos-conf-editor";
+        # ... other inputs
+      };
+
+      outputs = { self, nixpkgs, nixos-conf-editor, ... }: {
+        # ... your configuration
+      };
+    }
+    ```
+  </Step>
+  
+  <Step title="Add to your system packages">
+    In your `configuration.nix` or NixOS module:
+
+    ```nix configuration.nix
+    { config, pkgs, inputs, ... }:
+
+    {
+      environment.systemPackages = [
+        inputs.nixos-conf-editor.packages.${pkgs.system}.nixos-conf-editor
+        # ... other packages
+      ];
+    }
+    ```
+  </Step>
+  
+  <Step title="Rebuild your system">
+    ```bash
+    sudo nixos-rebuild switch --flake .#your-hostname
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  When installed system-wide via flakes, the `nce-helper` binary is automatically configured with the correct polkit permissions, eliminating the need for double authentication when rebuilding.
+</Note>
+
+### User profile installation
+
+Install directly to your user profile:
+
+```bash
+nix profile install github:snowfallorg/nixos-conf-editor
+```
+
+<Warning>
+  When using `nix profile install` or `nix-env`, you may be prompted to authenticate twice during rebuilds because the polkit permissions aren't automatically configured.
+</Warning>
+
+### Single run
+
+Try NixOS Configuration Editor without installing:
+
+<CodeGroup>
+```bash Flakes enabled
+nix run github:snowfallorg/nixos-conf-editor
+```
+
+```bash Flakes not enabled
+nix --extra-experimental-features "nix-command flakes" run github:snowfallorg/nixos-conf-editor
+```
+</CodeGroup>
+
+## Snowfall-lib architecture
+
+The project uses snowfall-lib's directory structure for organizing packages:
+
+```
+.
+├── flake.nix
+├── packages/
+│   └── nixos-conf-editor/
+│       └── default.nix          # Package definition
+├── shells/
+│   └── default/
+│       └── default.nix          # Development shell
+└── default.nix                  # Flake-compat entry point
+```
+
+### Package definition
+
+The package is defined in `packages/nixos-conf-editor/default.nix` using standard Nix derivation syntax:
+
+```nix
+stdenv.mkDerivation {
+  pname = "nixos-conf-editor";
+  version = "0.1.2";
+
+  cargoDeps = rustPlatform.importCargoLock {
+    lockFile = ../../Cargo.lock;
+  };
+
+  # ... build configuration
+}
+```
+
+Snowfall-lib automatically:
+- Discovers this package
+- Makes it available as `packages.${system}.nixos-conf-editor`
+- Sets it as the default package (via the alias)
+
+## Flake outputs
+
+The flake provides several outputs:
+
+<ParamField path="packages.${system}.nixos-conf-editor" type="derivation">
+  The main application package
+</ParamField>
+
+<ParamField path="packages.${system}.default" type="derivation">
+  Alias to `nixos-conf-editor` for convenience
+</ParamField>
+
+<ParamField path="devShells.${system}.default" type="derivation">
+  Development environment with all build dependencies
+</ParamField>
+
+## Pinning a specific version
+
+You can pin to a specific release or commit:
+
+```nix flake.nix
+{
+  inputs = {
+    nixos-conf-editor = {
+      url = "github:snowfallorg/nixos-conf-editor";
+      # Pin to a specific release tag
+      # url = "github:snowfallorg/nixos-conf-editor/v0.1.2";
+      # Or pin to a specific commit
+      # url = "github:snowfallorg/nixos-conf-editor/abc123";
+    };
+  };
+}
+```
+
+## Updating the flake
+
+Update to the latest version:
+
+```bash
+nix flake update nixos-conf-editor
+```
+
+Or update all inputs:
+
+```bash
+nix flake update
+```
+
+## Non-flake compatibility
+
+For systems not using flakes, the project includes a `default.nix` that uses `flake-compat`:
+
+```nix
+(import
+  (
+    let lock = builtins.fromJSON (builtins.readFile ./flake.lock); in
+    fetchTarball {
+      url = lock.nodes.flake-compat.locked.url or "https://github.com/edolstra/flake-compat/archive/${lock.nodes.flake-compat.locked.rev}.tar.gz";
+      sha256 = lock.nodes.flake-compat.locked.narHash;
+    }
+  )
+  { src = ./.; }
+).defaultNix
+```
+
+This allows traditional `nix-build` and `nix-env` commands to work with the flake-based project.

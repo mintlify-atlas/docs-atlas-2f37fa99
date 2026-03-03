@@ -1,80 +1,337 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get started with NixOS Configuration Editor in under 5 minutes
 ---
 
-## Get started in three steps
+This guide walks you through the basics of using NixOS Configuration Editor to browse, modify, and rebuild your NixOS configuration.
 
-Get your documentation site running locally and make your first customization.
+<Note>
+  Before starting, make sure you have [installed](/installation) NixOS Configuration Editor on your system.
+</Note>
 
-### Step 1: Set up your local environment
+## Launch the application
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+You can launch NixOS Configuration Editor in several ways:
+
+<CodeGroup>
+
+```bash Command line
+nixos-conf-editor
+```
+
+```bash Application menu
+# Search for "Configuration Editor" in your application launcher
+```
+
+```bash With debug logging
+RUST_LOG=nixos_conf_editor=trace nixos-conf-editor
+```
+
+</CodeGroup>
+
+<Note>
+  The debug logging command is useful for troubleshooting. It will display detailed trace information in your terminal.
+</Note>
+
+## First launch
+
+When you first open NixOS Configuration Editor, it will:
+
+<Steps>
+  <Step title="Load your configuration">
+    The application reads your NixOS configuration from `/etc/nixos/configuration.nix` by default.
+  </Step>
+  
+  <Step title="Parse available options">
+    It loads the complete set of NixOS options available on your system.
+  </Step>
+  
+  <Step title="Display the main window">
+    You'll see a hierarchical view of your configuration options organized by category.
+  </Step>
+</Steps>
+
+If your configuration uses Flakes or is located elsewhere, you can configure this in Preferences.
+
+## Understanding the interface
+
+The main window is organized into three sections:
+
+### Header bar
+
+- **Breadcrumb navigation**: Shows your current location in the option hierarchy
+- **Home button**: Return to the top level
+- **Search button**: Toggle search (Ctrl+F)
+- **Rebuild button**: Apply changes to your system
+- **Menu**: Access preferences and settings
+
+### Options view
+
+The main area displays two types of items:
+
+- **Attributes** (folders): Nested configuration categories you can navigate into
+- **Options** (settings): Individual configuration values you can edit
+
+Configured options are marked with a blue indicator, while unconfigured options appear in default gray.
+
+### Option detail
+
+When you click an option, you see:
+- **Description**: What the option does
+- **Type**: Expected value type (string, boolean, list, etc.)
+- **Default value**: What NixOS uses if you don't set it
+- **Example**: Sample configuration (if available)
+- **Value editor**: Where you modify the setting
+
+## Basic workflow
+
+Let's walk through a common task: enabling and configuring SSH.
+
+<Steps>
+  <Step title="Navigate to SSH options">
+    From the home screen:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    1. Click **services**
+    2. Click **openssh**
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    You'll see attributes like `enable`, `ports`, `settings`, etc.
+  </Step>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+  <Step title="Enable SSH">
+    Click on the **enable** option. You'll see:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    - **Type**: `boolean`
+    - **Default**: `false`
+    - **Description**: "Whether to enable OpenSSH server"
+    
+    Toggle the value to `true` using the True/False buttons.
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Save the change">
+    Click the **Save** button. The option is now staged for writing to your configuration.
+    
+    <Note>
+      The save button validates that your value matches the expected type. Invalid values will show an error.
+    </Note>
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Configure additional settings (optional)">
+    Navigate back using the breadcrumb, then explore other SSH options:
+    
+    - **services.openssh.ports**: Change SSH port (type: list of integers)
+    - **services.openssh.settings.PasswordAuthentication**: Allow password login (type: boolean)
+    
+    For each option, view the details, modify the value, and save.
+  </Step>
 
-### Step 3: Go live
+  <Step title="Rebuild your system">
+    When you're ready to apply all changes:
+    
+    1. Click the **Rebuild** button in the header
+    2. Authenticate when prompted (via polkit)
+    3. Watch the rebuild progress in the terminal view
+    
+    <Warning>
+      Rebuilding will run `nixos-rebuild switch`, which modifies your running system. Test configurations carefully.
+    </Warning>
+  </Step>
+</Steps>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+If the rebuild succeeds, you'll see a success message. If it fails, you can:
+- **Keep Editing**: Return to the editor to fix issues
+- **Reset Changes**: Discard all modifications
+- **Save Anyways**: Write changes to disk without rebuilding
+
+## Editing different value types
+
+NixOS Configuration Editor adapts the interface based on option types:
+
+<CodeGroup>
+
+```nix Boolean
+# Type: boolean
+# UI: True/False toggle buttons
+services.openssh.enable = true;
+```
+
+```nix String
+# Type: string  
+# UI: Text entry field
+services.openssh.banner = "Welcome to my server";
+```
+
+```nix Integer
+# Type: signed integer
+# UI: Number spinner
+services.openssh.maxAuthTries = 3;
+```
+
+```nix List
+# Type: list of integers
+# UI: Code editor with syntax highlighting
+services.openssh.ports = [ 22 2222 ];
+```
+
+```nix Attribute set
+# Type: attribute set
+# UI: Code editor with syntax highlighting
+services.openssh.settings = {
+  PasswordAuthentication = false;
+  PermitRootLogin = "no";
+};
+```
+
+</CodeGroup>
+
+Simple types (boolean, string, integer) get specialized input widgets. Complex types (lists, attribute sets, etc.) use the code editor.
+
+## Using search
+
+When you know what you're looking for, use search:
+
+<Steps>
+  <Step title="Open search">
+    Press **Ctrl+F** or click the search button in the header.
+  </Step>
+
+  <Step title="Enter your query">
+    Type any part of the option name, like `firewall` or `timezone`.
+    
+    Search results appear instantly, showing:
+    - Full option path (e.g., `networking.firewall.enable`)
+    - Whether it's configured (blue indicator)
+    - Option description
+  </Step>
+
+  <Step title="Open an option">
+    Click any search result to jump directly to that option's editor.
+  </Step>
+</Steps>
+
+<Tip>
+  Use the "Modified only" menu option to filter views and show only options you've configured or changed.
+</Tip>
+
+## Working with named attributes
+
+Some NixOS options use `<name>` placeholders for user-defined names, like `users.users.<name>` or `services.<name>`.
+
+### Example: Adding a user
+
+<Steps>
+  <Step title="Navigate to users">
+    Go to **users** → **users**
+    
+    You'll see existing users and an `<ADD>` button.
+  </Step>
+
+  <Step title="Add a new user">
+    1. Click the `<ADD>` row
+    2. Enter a username (e.g., `alice`)
+    3. Click OK
+    
+    A new attribute `alice` appears under `users.users`.
+  </Step>
+
+  <Step title="Configure user options">
+    Click **alice** to see user-specific options:
+    - `isNormalUser`
+    - `extraGroups`
+    - `shell`
+    - etc.
+    
+    Set values as needed and save.
+  </Step>
+</Steps>
+
+The same pattern works for any `<name>` attribute in NixOS.
+
+## Working with lists
+
+Some options are lists with numeric indices, like `boot.initrd.luks.devices.*.keyFile`.
+
+<Steps>
+  <Step title="Navigate to the list option">
+    Find an option with type `list of <something>` or path containing `*`.
+  </Step>
+
+  <Step title="View existing items">
+    Existing list items appear as `[0]`, `[1]`, `[2]`, etc.
+  </Step>
+
+  <Step title="Add a new item">
+    Click the `<ADD>` button to append a new item to the list.
+  </Step>
+
+  <Step title="Edit values">
+    Click each index to edit its value.
+  </Step>
+</Steps>
+
+## Preferences
+
+Configure NixOS Configuration Editor for your setup:
+
+<Steps>
+  <Step title="Open preferences">
+    Click the menu button (⋮) in the header and select **Preferences**.
+  </Step>
+
+  <Step title="Set configuration path">
+    - **System config**: Path to your `configuration.nix` (default: `/etc/nixos/configuration.nix`)
+    - **Flake**: If using Flakes, specify the flake path (e.g., `/etc/nixos#nixos`)
+  </Step>
+
+  <Step title="Save and reload">
+    After changing paths, the application will reload your configuration.
+  </Step>
+</Steps>
+
+## Keyboard shortcuts
+
+- **Ctrl+F**: Toggle search
+- **Escape**: Close search/dialogs
+
+## Tips and best practices
+
+<CardGroup cols={2}>
+  <Card title="Test before rebuilding" icon="flask">
+    Save multiple changes, then rebuild once to test everything together.
+  </Card>
+  
+  <Card title="Use search extensively" icon="magnifying-glass">
+    Searching is often faster than navigating the hierarchy.
+  </Card>
+  
+  <Card title="Read descriptions carefully" icon="book">
+    Option descriptions include important details about expected formats and behavior.
+  </Card>
+  
+  <Card title="Check examples" icon="lightbulb">
+    When available, example values show proper Nix syntax.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Always review changes before rebuilding, especially for critical system options like bootloader, networking, or filesystem configuration.
+</Warning>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Advanced topics" icon="graduation-cap" href="/advanced/flakes">
+    Learn about Flakes and the helper binary
+  </Card>
+  
+  <Card title="Troubleshooting" icon="wrench" href="/development/troubleshooting">
+    Common issues and solutions
+  </Card>
+  
+  <Card title="Contributing" icon="code" href="https://github.com/snowfallorg/nixos-conf-editor">
+    Contribute to the project
+  </Card>
+  
+  <Card title="Community" icon="users" href="https://matrix.to/#/#snowflakeos:matrix.org">
+    Join the community
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
